@@ -9,7 +9,7 @@ import {
   deletePost,
   getAvailablePosts,
 } from "../controllers/postController.js";
-import { verifyToken } from "../middlewares/authMiddleWare.js";
+import { verifyToken } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
