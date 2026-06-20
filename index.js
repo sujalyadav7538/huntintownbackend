@@ -15,25 +15,10 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 dotenv.config();
-// Whitelisted domains
-const allowedOrigins = [
-  "http://localhost:3000",
-  "https://yourdomain.com",
-  "https://www.yourdomain.com",
-];
-// Cors configuration
+
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (Postman, mobile apps, server-to-server)
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
+    origin: true,
     credentials: true,
   }),
 );
