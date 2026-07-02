@@ -11,7 +11,7 @@ const answerSchema = new mongoose.Schema(
       required: true,
     },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const offerSchema = new mongoose.Schema(
@@ -23,13 +23,9 @@ const offerSchema = new mongoose.Schema(
     },
 
     offeredBy: {
-      id: {
-        type: String,
-        required: true,
-      },
-      name: String,
-      email: String,
-      avatar: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
     },
 
     message: {
@@ -41,13 +37,13 @@ const offerSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "accepted", "rejected"],
+      enum: ["pending", "accepted", "rejected", "completed", "cancelled"],
       default: "pending",
     },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 export default mongoose.model("Offer", offerSchema);

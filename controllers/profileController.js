@@ -1,25 +1,20 @@
-// controller/profileController.js
-
+import User from "../models/userSchema.js";
 import cloudinary from "../utils/cloudinary.js";
-import { supabase } from "../utils/SupaBaseClient.js";
 
 export const getProfile = async (req, res, next) => {
   try {
-    const { id } = req.user;
+    const user = await User.findById(req.user._id).select("-password");
 
-    const { data, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", id)
-      .single();
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
 
-    if (error) return next(error);
-
-    delete data.password;
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      user: data,
+      user,
     });
   } catch (error) {
     next(error);
@@ -28,15 +23,22 @@ export const getProfile = async (req, res, next) => {
 
 export const updateProfile = async (req, res, next) => {
   try {
-    const { id } = req.user;
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
 
     let { name, role, location, bio, skills } = req.body;
 
-    // Parse skills if received from FormData
+    // Parse skills coming from multipart/form-data
     if (typeof skills === "string") {
       try {
         skills = JSON.parse(skills);
-      } catch (error) {
+      } catch {
         return res.status(400).json({
           success: false,
           message: "Invalid skills format",
@@ -44,67 +46,32 @@ export const updateProfile = async (req, res, next) => {
       }
     }
 
-    // Get existing user
-    const { data: existingUser, error: fetchError } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", id)
-      .single();
+    if (name !== undefined) user.name = name.trim();
+    if (role !== undefined) user.role = role.trim();
+    if (location !== undefined) user.location = location.trim();
+    if (bio !== undefined) user.bio = bio.trim();
+    if (skills !== undefined) user.skills = skills;
 
-    if (fetchError || !existingUser) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    const updatePayload = {};
-
-    // Only update fields that are actually provided
-    if (name !== undefined) updatePayload.name = name.trim();
-    if (role !== undefined) updatePayload.role = role.trim();
-    if (location !== undefined) updatePayload.location = location.trim();
-    if (bio !== undefined) updatePayload.bio = bio.trim();
-    if (skills !== undefined) updatePayload.skills = skills;
-    console.log("FILE:", req.file);
-    console.log("BODY:", req.body);
-    // Handle avatar update
+    // Avatar Upload
     if (req.file) {
       try {
-        // Delete previous avatar if exists
-        if (existingUser.avatar_public_id) {
-          await cloudinary.uploader.destroy(existingUser.avatar_public_id);
+        if (user.avatar_public_id) {
+          await cloudinary.uploader.destroy(user.avatar_public_id);
         }
 
-        updatePayload.avatar = req.file.path;
-        updatePayload.avatar_public_id = req.file.filename;
-      } catch (cloudinaryError) {
+        user.avatar = req.file.path;
+        user.avatar_public_id = req.file.filename;
+      } catch (err) {
         return res.status(500).json({
           success: false,
-          message: "Failed to process avatar image",
+          message: "Failed to upload avatar",
         });
       }
     }
 
-    const { data: updatedUser, error: updateError } = await supabase
-      .from("users")
-      .update(updatePayload)
-      .eq("id", id)
-      .select()
-      .single();
+    await user.save();
 
-    if (updateError) {
-      return next(updateError);
-    }
-
-    if (!updatedUser) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to update profile",
-      });
-    }
-
-    delete updatedUser.password;
+    const updatedUser = await User.findById(user._id).select("-password");
 
     return res.status(200).json({
       success: true,

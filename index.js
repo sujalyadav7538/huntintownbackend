@@ -3,6 +3,11 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 
+// Socket IO
+import http from "http";
+import { Server } from "socket.io";
+import initializeSocket from "./socket/index.js";
+
 // Routes
 import authRoute from "./routes/authRoute.js";
 import postRoute from "./routes/postRoute.js";
@@ -10,8 +15,11 @@ import connectDB from "./utils/MongoDBClient.js";
 import profileRoute from "./routes/profileRoute.js";
 import dataRoute from "./routes/dataRoute.js";
 import offerRoute from "./routes/offerRoutes.js";
+import chatRoute from "./routes/chatRoutes.js";
 
 const app = express();
+const server = http.createServer(app);
+
 const PORT = process.env.PORT || 5000;
 
 dotenv.config();
@@ -24,6 +32,16 @@ app.use(
 );
 
 app.use(express.json());
+
+// Socket Initialization
+
+export const io = new Server(server, {
+  cors: {
+    origin: true,
+    credentials: true,
+  },
+});
+initializeSocket(io);
 
 // Connection With Database`
 await connectDB();
@@ -41,6 +59,7 @@ app.use("/api/posts", postRoute);
 app.use("/api/profile", profileRoute);
 app.use("/api/data", dataRoute);
 app.use("/api/offers", offerRoute);
+app.use("/api/chat", chatRoute);
 
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
@@ -52,6 +71,10 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
+// app.listen(PORT, () => {
+//   console.log(`Server running on port ${PORT}`);
+// });
+
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

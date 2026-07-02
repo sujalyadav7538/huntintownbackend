@@ -1,24 +1,19 @@
+import mongoose from "mongoose";
+
+import Conversation from "../models/conversationSchema.js";
 import Offer from "../models/offerSchema.js";
 import Post from "../models/postSchema.js";
-import { supabase } from "../utils/SupaBaseClient.js";
+import User from "../models/userSchema.js";
 
 export const createOffer = async (req, res, next) => {
   try {
     const { postId, message, answers } = req.body;
+    const userId = req.user._id;
 
-    const userId = req?.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
-
-    if (!postId) {
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
       return res.status(400).json({
         success: false,
-        message: "Post id is required",
+        message: "Invalid post id",
       });
     }
 
@@ -31,24 +26,24 @@ export const createOffer = async (req, res, next) => {
       });
     }
 
-    if (post.author.id === userId) {
+    if (post.author.toString() === userId) {
       return res.status(400).json({
         success: false,
-        message: "You cannot submit an offer on your own post",
+        message: "You cannot offer help on your own post",
       });
     }
 
-    if (post.status !== "Live") {
+    if (post.status !== "live") {
       return res.status(400).json({
         success: false,
-        message: "This post is no longer accepting offers",
+        message: "Post is not accepting offers",
       });
     }
 
-    if (post.expiresAt && new Date(post.expiresAt) < new Date()) {
+    if (post.expiresAt && post.expiresAt < new Date()) {
       return res.status(400).json({
         success: false,
-        message: "This post has expired",
+        message: "Post has expired",
       });
     }
 
@@ -61,65 +56,47 @@ export const createOffer = async (req, res, next) => {
 
     const existingOffer = await Offer.findOne({
       postId,
-      "offeredBy.id": userId,
+      offeredBy: userId,
     });
 
     if (existingOffer) {
       return res.status(400).json({
         success: false,
-        message: "You have already submitted an offer for this post",
-      });
-    }
-
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("id,name,email,avatar")
-      .eq("id", userId)
-      .single();
-
-    if (error || !user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
+        message: "You have already submitted an offer.",
       });
     }
 
     const offer = await Offer.create({
       postId,
-      message,
+      offeredBy: userId,
+      message: message?.trim() || "",
       answers: answers || [],
-      offeredBy: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar,
-      },
     });
 
-    await Post.findByIdAndUpdate(postId, {
-      $inc: { offersCount: 1 },
-    });
+    post.offersCount += 1;
+    await post.save();
+
+    await offer.populate("offeredBy", "name avatar");
 
     return res.status(201).json({
       success: true,
-      message: "Offer submitted successfully",
+      message: "Offer submitted successfully.",
       offer,
     });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 };
 
 export const getOffersByPost = async (req, res, next) => {
   try {
     const { postId } = req.params;
+    const userId = req.user._id;
 
-    const userId = req?.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      return res.status(400).json({
         success: false,
-        message: "Unauthorized",
+        message: "Invalid post id",
       });
     }
 
@@ -132,45 +109,52 @@ export const getOffersByPost = async (req, res, next) => {
       });
     }
 
-    if (post.author.id !== userId) {
+    if (post.author.toString() !== userId) {
       return res.status(403).json({
         success: false,
-        message: "You are not authorized to view these offers",
+        message: "Unauthorized",
       });
     }
 
     const offers = await Offer.find({
       postId,
-    }).sort({
-      createdAt: -1,
-    });
+    })
+      .populate("offeredBy", "name avatar rating location")
+      .sort({
+        createdAt: -1,
+      });
 
     return res.status(200).json({
       success: true,
       count: offers.length,
       offers,
     });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 };
 
 export const acceptOffer = async (req, res, next) => {
+  const session = await mongoose.startSession();
+
   try {
+    session.startTransaction();
+
     const { offerId } = req.params;
+    const userId = req.user._id;
 
-    const userId = req?.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({
+    if (!mongoose.Types.ObjectId.isValid(offerId)) {
+      await session.abortTransaction();
+      return res.status(400).json({
         success: false,
-        message: "Unauthorized",
+        message: "Invalid offer id",
       });
     }
 
-    const offer = await Offer.findById(offerId);
+    const offer = await Offer.findById(offerId).session(session);
 
     if (!offer) {
+      await session.abortTransaction();
       return res.status(404).json({
         success: false,
         message: "Offer not found",
@@ -178,58 +162,106 @@ export const acceptOffer = async (req, res, next) => {
     }
 
     if (offer.status === "accepted") {
+      await session.abortTransaction();
       return res.status(400).json({
         success: false,
         message: "Offer already accepted",
       });
     }
 
-    const post = await Post.findById(offer.postId);
+    const post = await Post.findById(offer.postId).session(session);
 
     if (!post) {
+      await session.abortTransaction();
       return res.status(404).json({
         success: false,
         message: "Post not found",
       });
     }
 
-    if (post.author.id !== userId) {
+    if (post.author.toString() !== userId) {
+      await session.abortTransaction();
       return res.status(403).json({
         success: false,
-        message: "You are not authorized",
+        message: "Unauthorized",
       });
     }
 
-    if (post.status === "resolved") {
+    if (post.status !== "live") {
+      await session.abortTransaction();
       return res.status(400).json({
         success: false,
-        message: "Post is already resolved",
+        message: "Post is no longer accepting offers",
       });
     }
 
     offer.status = "accepted";
-    await offer.save();
+    await offer.save({ session });
+
+    post.status = "in_progress";
+    await post.save({ session });
 
     await Offer.updateMany(
       {
-        postId: offer.postId,
-        _id: { $ne: offerId },
+        postId: post._id,
+        _id: { $ne: offer._id },
         status: "pending",
       },
       {
-        status: "rejected",
+        $set: {
+          status: "rejected",
+        },
+      },
+      {
+        session,
       },
     );
 
-    post.status = "resolved";
-    await post.save();
+    let conversation = await Conversation.findOne({
+      offerId: offer._id,
+    }).session(session);
+
+    if (!conversation) {
+      conversation = (
+        await Conversation.create(
+          [
+            {
+              post: post._id,
+              offerId: offer._id,
+              participants: [post.author, offer.offeredBy],
+              status: "active",
+              lastMessage: null,
+              lastMessageAt: null,
+            },
+          ],
+          { session },
+        )
+      )[0];
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    await conversation.populate([
+      {
+        path: "participants",
+        select: "name avatar rating location",
+      },
+      {
+        path: "post",
+        select: "title category",
+      },
+    ]);
 
     return res.status(200).json({
       success: true,
       message: "Offer accepted successfully",
       offer,
+      conversation,
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     next(error);
   }
 };
@@ -237,13 +269,12 @@ export const acceptOffer = async (req, res, next) => {
 export const rejectOffer = async (req, res, next) => {
   try {
     const { offerId } = req.params;
+    const userId = req.user._id;
 
-    const userId = req?.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({
+    if (!mongoose.Types.ObjectId.isValid(offerId)) {
+      return res.status(400).json({
         success: false,
-        message: "Unauthorized",
+        message: "Invalid offer id",
       });
     }
 
@@ -265,10 +296,10 @@ export const rejectOffer = async (req, res, next) => {
       });
     }
 
-    if (post.author.id !== userId) {
+    if (post.author.toString() !== userId) {
       return res.status(403).json({
         success: false,
-        message: "You are not authorized",
+        message: "Unauthorized",
       });
     }
 
@@ -287,7 +318,6 @@ export const rejectOffer = async (req, res, next) => {
     }
 
     offer.status = "rejected";
-
     await offer.save();
 
     return res.status(200).json({
@@ -302,52 +332,26 @@ export const rejectOffer = async (req, res, next) => {
 
 export const getMyActivity = async (req, res, next) => {
   try {
-    const userId = req?.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
+    const userId = req.user._id;
 
     const offers = await Offer.find({
-      "offeredBy.id": userId,
-    }).sort({
-      createdAt: -1,
-    });
-
-    if (!offers.length) {
-      return res.status(200).json({
-        success: true,
-        count: 0,
-        data: [],
+      offeredBy: userId,
+    })
+      .populate({
+        path: "postId",
+        populate: {
+          path: "author",
+          select: "name avatar rating location",
+        },
+      })
+      .sort({
+        createdAt: -1,
       });
-    }
-
-    const postIds = offers.map((offer) => offer.postId);
-
-    const posts = await Post.find({
-      _id: { $in: postIds },
-    });
-
-    const postMap = new Map();
-
-    posts.forEach((post) => {
-      postMap.set(post._id.toString(), post);
-    });
-
-    const activity = offers
-      .map((offer) => ({
-        post: postMap.get(offer.postId.toString()),
-        offer,
-      }))
-      .filter((item) => item.post);
 
     return res.status(200).json({
       success: true,
-      count: activity.length,
-      data: activity,
+      count: offers.length,
+      data: offers,
     });
   } catch (error) {
     next(error);
@@ -356,17 +360,10 @@ export const getMyActivity = async (req, res, next) => {
 
 export const getMyResponses = async (req, res, next) => {
   try {
-    const userId = req?.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
+    const userId = req.user._id;
 
     const posts = await Post.find({
-      "author.id": userId,
+      author: userId,
     }).sort({
       createdAt: -1,
     });
@@ -379,35 +376,39 @@ export const getMyResponses = async (req, res, next) => {
       });
     }
 
-    const postIds = posts.map((post) => post._id);
+    const postIds = posts.map((p) => p._id);
 
     const offers = await Offer.find({
-      postId: { $in: postIds },
-    }).sort({
-      createdAt: -1,
-    });
+      postId: {
+        $in: postIds,
+      },
+    })
+      .populate("offeredBy", "name avatar rating location")
+      .sort({
+        createdAt: -1,
+      });
 
-    const offersMap = {};
+    const offersMap = new Map();
 
-    offers.forEach((offer) => {
+    for (const offer of offers) {
       const key = offer.postId.toString();
 
-      if (!offersMap[key]) {
-        offersMap[key] = [];
+      if (!offersMap.has(key)) {
+        offersMap.set(key, []);
       }
 
-      offersMap[key].push(offer);
-    });
+      offersMap.get(key).push(offer);
+    }
 
-    const data = posts.map((post) => ({
+    const response = posts.map((post) => ({
       post,
-      offers: offersMap[post._id.toString()] || [],
+      offers: offersMap.get(post._id.toString()) || [],
     }));
 
     return res.status(200).json({
       success: true,
-      count: data.length,
-      data,
+      count: response.length,
+      data: response,
     });
   } catch (error) {
     next(error);

@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
-import { supabase } from "../utils/SupaBaseClient.js";
+import { v4 as uuidv4 } from "uuid";
+import User from "../models/userSchema.js";
 import { generateAccessToken } from "../utils/generateToken.js";
 
 export const Signup = async (req, res, next) => {
@@ -13,11 +14,7 @@ export const Signup = async (req, res, next) => {
       });
     }
 
-    const { data: existingUser } = await supabase
-      .from("users")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
+    const existingUser = await User.findOne({ email });
 
     if (existingUser) {
       return res.status(400).json({
@@ -28,26 +25,28 @@ export const Signup = async (req, res, next) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const { data, error } = await supabase
-      .from("users")
-      .insert({
-        name,
-        email,
-        password: hashedPassword,
-      })
-      .select()
-      .single();
+    const user = await User.create({
+      id: uuidv4(),
+      name,
+      email,
+      password: hashedPassword,
+    });
 
-    if (error) {
-      return next(error);
-    }
+    const access_token = generateAccessToken({
+      _id: user._id,
+      id: user.id,
+      email: user.email,
+      name: user.name,
+    });
 
-    delete data.password;
+    const userResponse = user.toObject();
+    delete userResponse.password;
 
     return res.status(201).json({
       success: true,
       message: "User created successfully",
-      user: data,
+      access_token,
+      user: userResponse,
     });
   } catch (error) {
     next(error);
@@ -65,20 +64,19 @@ export const Signin = async (req, res, next) => {
       });
     }
 
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("email", email)
-      .single();
-    console.log(user);
-    if (error || !user) {
+    const user = await User.findOne({ email }).select("+password");
+
+    if (!user) {
       return res.status(401).json({
         success: false,
         message: "Invalid email or password",
       });
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      user.password,
+    );
 
     if (!isPasswordValid) {
       return res.status(401).json({
@@ -87,19 +85,24 @@ export const Signin = async (req, res, next) => {
       });
     }
 
+    user.lastSeen = new Date();
+    await user.save();
+
     const access_token = generateAccessToken({
+      _id: user._id,
       id: user.id,
       email: user.email,
       name: user.name,
     });
 
-    delete user.password;
+    const userResponse = user.toObject();
+    delete userResponse.password;
 
     return res.status(200).json({
       success: true,
       message: "Login successful",
       access_token,
-      user,
+      user: userResponse,
     });
   } catch (error) {
     next(error);

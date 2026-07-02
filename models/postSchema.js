@@ -43,9 +43,8 @@ const postSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["Live", "fulfilled", "expired"],
-      default: "Live",
-      index: true, // Add an index for faster queries on status
+      enum: ["live", "in_progress", "completed", "expired", "cancelled"],
+      default: "live",
     },
 
     expiryDays: {
@@ -55,7 +54,11 @@ const postSchema = new mongoose.Schema(
 
     expiresAt: {
       type: Date,
-      required: true,
+      default: () => {
+        const date = new Date();
+        date.setDate(date.getDate() + 7);
+        return date;
+      },
     },
 
     questions: [
@@ -89,13 +92,9 @@ const postSchema = new mongoose.Schema(
     },
 
     author: {
-      id: {
-        type: String,
-        required: true,
-      },
-      name: String,
-      email: String,
-      avatar: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
     },
 
     comments: [

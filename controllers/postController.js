@@ -1,8 +1,6 @@
-// controllers/postController.js
-
+import mongoose from "mongoose";
 import Post from "../models/postSchema.js";
 import Offer from "../models/offerSchema.js";
-import { supabase } from "../utils/SupaBaseClient.js";
 
 export const createPost = async (req, res, next) => {
   try {
@@ -14,7 +12,6 @@ export const createPost = async (req, res, next) => {
       type,
       budget,
       timeline,
-      status,
       expiryDays,
       expiresAt,
       questions,
@@ -28,20 +25,6 @@ export const createPost = async (req, res, next) => {
         message: "Required fields are missing",
       });
     }
-    const user = req.user;
-
-    const { data: profile, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", user.id)
-      .single();
-    const author = {
-      id: profile?.id,
-      name: profile?.name,
-      email: profile?.email,
-      avatar: profile?.avatar,
-    };
-    console.log("Profile data:", author);
 
     const post = await Post.create({
       title,
@@ -51,14 +34,15 @@ export const createPost = async (req, res, next) => {
       type,
       budget,
       timeline,
-      status,
       expiryDays,
       expiresAt,
-      questions,
+      questions: questions || [],
       contactMethods,
-      images,
-      author,
+      images: images || [],
+      author: req.user._id,
     });
+
+    await post.populate("author", "name avatar email rating location");
 
     return res.status(201).json({
       success: true,
@@ -72,7 +56,11 @@ export const createPost = async (req, res, next) => {
 
 export const getAllPosts = async (req, res, next) => {
   try {
-    const posts = await Post.find().sort({ createdAt: -1 });
+    const posts = await Post.find()
+      .populate("author", "name avatar rating location")
+      .sort({
+        createdAt: -1,
+      });
 
     return res.status(200).json({
       success: true,
@@ -88,7 +76,22 @@ export const getPostById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const post = await Post.findById(id);
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid post id",
+      });
+    }
+
+    const post = await Post.findById(id)
+      .populate("author", "name avatar rating location")
+      .populate({
+        path: "comments",
+        populate: {
+          path: "author",
+          select: "name avatar rating location",
+        },
+      });
 
     if (!post) {
       return res.status(404).json({
@@ -110,10 +113,14 @@ export const updatePost = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const post = await Post.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true,
-    });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid post id",
+      });
+    }
+
+    const post = await Post.findById(id);
 
     if (!post) {
       return res.status(404).json({
@@ -121,6 +128,19 @@ export const updatePost = async (req, res, next) => {
         message: "Post not found",
       });
     }
+
+    if (post.author.toString() !== req.user._id) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    Object.assign(post, req.body);
+
+    await post.save();
+
+    await post.populate("author", "name avatar rating location");
 
     return res.status(200).json({
       success: true,
@@ -133,49 +153,95 @@ export const updatePost = async (req, res, next) => {
 };
 
 export const deletePost = async (req, res, next) => {
+  const session = await mongoose.startSession();
+
   try {
+    session.startTransaction();
+
     const { id } = req.params;
 
-    const post = await Post.findByIdAndDelete(id);
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      await session.abortTransaction();
+
+      return res.status(400).json({
+        success: false,
+        message: "Invalid post id",
+      });
+    }
+
+    const post = await Post.findById(id).session(session);
 
     if (!post) {
+      await session.abortTransaction();
+
       return res.status(404).json({
         success: false,
         message: "Post not found",
       });
     }
 
+    if (post.author.toString() !== req.user._id) {
+      await session.abortTransaction();
+
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    await Offer.deleteMany(
+      {
+        postId: post._id,
+      },
+      { session },
+    );
+
+    await Post.findByIdAndDelete(post._id, {
+      session,
+    });
+
+    await session.commitTransaction();
+    session.endSession();
+
     return res.status(200).json({
       success: true,
       message: "Post deleted successfully",
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     next(error);
   }
 };
 
 export const getAvailablePosts = async (req, res, next) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     const appliedOffers = await Offer.find({
-      "offeredBy.id": userId,
+      offeredBy: userId,
     }).select("postId");
 
     const appliedPostIds = appliedOffers.map((offer) => offer.postId);
 
     const posts = await Post.find({
-      "author.id": { $ne: userId }, // not own post
-      _id: { $nin: appliedPostIds }, // not applied
-      status: "Live", // only live posts
-    }).sort({
-      createdAt: -1,
-    });
+      author: {
+        $ne: userId,
+      },
+      _id: {
+        $nin: appliedPostIds,
+      },
+      status: "live",
+    })
+      .populate("author", "name avatar rating location")
+      .sort({
+        createdAt: -1,
+      });
 
     return res.status(200).json({
       success: true,
       count: posts.length,
-      posts: posts,
+      posts,
     });
   } catch (error) {
     next(error);
