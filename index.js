@@ -37,7 +37,10 @@ app.use(express.json());
 
 export const io = new Server(server, {
   cors: {
-    origin: true,
+    origin: [
+      "https://huntintown.onrender.com",
+      "http://localhost:5173",
+    ],
     credentials: true,
   },
 });
