@@ -63,9 +63,25 @@ const userSchema = new mongoose.Schema(
       default: "",
     },
 
-    location: {
+    // Human readable address
+    address: {
       type: String,
       default: "",
+    },
+
+    // GeoJSON Location
+    location: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+        required: false,
+      },
+
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        default: undefined,
+      },
     },
 
     phone: {

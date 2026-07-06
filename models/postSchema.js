@@ -1,5 +1,3 @@
-// models/Post.js
-
 import mongoose from "mongoose";
 
 const postSchema = new mongoose.Schema(
@@ -21,9 +19,24 @@ const postSchema = new mongoose.Schema(
       required: true,
     },
 
-    location: {
+    // Human readable address
+    address: {
       type: String,
       required: true,
+    },
+
+    // GeoJSON Location
+    location: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
+
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        required: true,
+      },
     },
 
     type: {
@@ -37,9 +50,7 @@ const postSchema = new mongoose.Schema(
       default: "Negotiable",
     },
 
-    timeline: {
-      type: String,
-    },
+    timeline: String,
 
     status: {
       type: String,
@@ -55,9 +66,9 @@ const postSchema = new mongoose.Schema(
     expiresAt: {
       type: Date,
       default: () => {
-        const date = new Date();
-        date.setDate(date.getDate() + 7);
-        return date;
+        const d = new Date();
+        d.setDate(d.getDate() + 7);
+        return d;
       },
     },
 
@@ -68,11 +79,7 @@ const postSchema = new mongoose.Schema(
       },
     ],
 
-    images: [
-      {
-        type: String, // image urls
-      },
-    ],
+    images: [String],
 
     contactMethods: {
       whatsApp: {
@@ -113,5 +120,10 @@ const postSchema = new mongoose.Schema(
     timestamps: true,
   },
 );
+
+// VERY IMPORTANT
+postSchema.index({
+  location: "2dsphere",
+});
 
 export default mongoose.model("Post", postSchema);

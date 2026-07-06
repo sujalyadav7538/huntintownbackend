@@ -32,7 +32,8 @@ export const updateProfile = async (req, res, next) => {
       });
     }
 
-    let { name, role, location, bio, skills } = req.body;
+    let { name, role, bio, skills, address, coordinates, phone, website } =
+      req.body;
 
     // Parse skills coming from multipart/form-data
     if (typeof skills === "string") {
@@ -46,11 +47,41 @@ export const updateProfile = async (req, res, next) => {
       }
     }
 
+    // Parse coordinates coming from multipart/form-data
+    if (typeof coordinates === "string") {
+      try {
+        coordinates = JSON.parse(coordinates);
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid coordinates format",
+        });
+      }
+    }
+
+    if (coordinates !== undefined) {
+      if (
+        !Array.isArray(coordinates) ||
+        coordinates.length !== 2 ||
+        coordinates.some((c) => typeof c !== "number")
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Coordinates must be an array of [longitude, latitude]",
+        });
+      }
+    }
+
     if (name !== undefined) user.name = name.trim();
     if (role !== undefined) user.role = role.trim();
-    if (location !== undefined) user.location = location.trim();
     if (bio !== undefined) user.bio = bio.trim();
     if (skills !== undefined) user.skills = skills;
+    if (address !== undefined) user.address = address.trim();
+    if (phone !== undefined) user.phone = phone.trim();
+    if (website !== undefined) user.website = website.trim();
+    if (coordinates !== undefined) {
+      user.location = { type: "Point", coordinates };
+    }
 
     // Avatar Upload
     if (req.file) {

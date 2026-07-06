@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Post from "../models/postSchema.js";
 import Offer from "../models/offerSchema.js";
+import { geoCode } from "../utils/geoCode.js";
 
 export const createPost = async (req, res, next) => {
   try {
@@ -8,6 +9,7 @@ export const createPost = async (req, res, next) => {
       title,
       description,
       category,
+      address,
       location,
       type,
       budget,
@@ -19,18 +21,26 @@ export const createPost = async (req, res, next) => {
       images,
     } = req.body;
 
-    if (!title || !description || !category || !location) {
+    if (!title || !description || !category || !address) {
       return res.status(400).json({
         success: false,
         message: "Required fields are missing",
       });
+    }
+    let coordinates = location?.coordinates;
+    if (!location?.coordinates) {
+      coordinates = await geoCode(address);
     }
 
     const post = await Post.create({
       title,
       description,
       category,
-      location,
+      address,
+      location: {
+        type: "Point",
+        coordinates,
+      },
       type,
       budget,
       timeline,
@@ -83,15 +93,10 @@ export const getPostById = async (req, res, next) => {
       });
     }
 
-    const post = await Post.findById(id)
-      .populate("author", "name avatar rating location")
-      .populate({
-        path: "comments",
-        populate: {
-          path: "author",
-          select: "name avatar rating location",
-        },
-      });
+    const post = await Post.findById(id).populate(
+      "author",
+      "name avatar rating location",
+    );
 
     if (!post) {
       return res.status(404).json({
@@ -136,7 +141,50 @@ export const updatePost = async (req, res, next) => {
       });
     }
 
-    Object.assign(post, req.body);
+    const {
+      title,
+      description,
+      category,
+      address,
+      coordinates,
+      type,
+      budget,
+      timeline,
+      expiryDays,
+      expiresAt,
+      questions,
+      contactMethods,
+      images,
+      status,
+    } = req.body;
+
+    if (coordinates !== undefined) {
+      if (
+        !Array.isArray(coordinates) ||
+        coordinates.length !== 2 ||
+        coordinates.some((c) => typeof c !== "number")
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Coordinates must be an array of [longitude, latitude]",
+        });
+      }
+      post.location = { type: "Point", coordinates };
+    }
+
+    if (title !== undefined) post.title = title;
+    if (description !== undefined) post.description = description;
+    if (category !== undefined) post.category = category;
+    if (address !== undefined) post.address = address;
+    if (type !== undefined) post.type = type;
+    if (budget !== undefined) post.budget = budget;
+    if (timeline !== undefined) post.timeline = timeline;
+    if (expiryDays !== undefined) post.expiryDays = expiryDays;
+    if (expiresAt !== undefined) post.expiresAt = expiresAt;
+    if (questions !== undefined) post.questions = questions;
+    if (contactMethods !== undefined) post.contactMethods = contactMethods;
+    if (images !== undefined) post.images = images;
+    if (status !== undefined) post.status = status;
 
     await post.save();
 
