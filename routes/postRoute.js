@@ -10,11 +10,12 @@ import {
   getAvailablePosts,
 } from "../controllers/postController.js";
 import { verifyToken } from "../middlewares/authMiddleware.js";
+import { uploadPostImages } from "../middlewares/uploadMiddleware.js";
 import { geoCode } from "../utils/geoCode.js";
 
 const router = express.Router();
 
-router.post("/", verifyToken, createPost);
+router.post("/", verifyToken, uploadPostImages.array("images", 3), createPost);
 
 router.get("/", getAllPosts);
 router.get("/getAvailablePosts", verifyToken, getAvailablePosts);

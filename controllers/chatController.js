@@ -22,6 +22,79 @@ export const getMyConversations = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/chat/posts
+ * Returns the unique posts that have conversations for the current user,
+ * aggregated with conversationCount and latest activity time.
+ */
+export const getPostsWithConversations = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+
+    const conversations = await Conversation.find({ participants: userId })
+      .populate("post", "title category budget address status")
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    // Group by post, accumulate stats
+    const postMap = new Map();
+    for (const conv of conversations) {
+      if (!conv.post) continue;
+      const postId = conv.post._id.toString();
+      if (!postMap.has(postId)) {
+        postMap.set(postId, {
+          _id: conv.post._id,
+          title: conv.post.title,
+          category: conv.post.category,
+          budget: conv.post.budget,
+          location: conv.post.address,
+          status: conv.post.status,
+          conversationCount: 0,
+          lastMessageAt: conv.lastMessageAt || conv.updatedAt,
+        });
+      }
+      const entry = postMap.get(postId);
+      entry.conversationCount++;
+      const convTime = conv.lastMessageAt || conv.updatedAt;
+      if (convTime > entry.lastMessageAt) entry.lastMessageAt = convTime;
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: Array.from(postMap.values()),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/chat/posts/:postId/conversations
+ * Returns all conversations the current user has for a specific post.
+ */
+export const getConversationsByPost = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+    const { postId } = req.params;
+
+    const conversations = await Conversation.find({
+      participants: userId,
+      post: postId,
+    })
+      .populate("post", "title category budget address status")
+      .populate("participants", "id name avatar role rating location")
+      .sort({ updatedAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: conversations.length,
+      data: conversations,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getConversationMessages = async (req, res, next) => {
   try {
     const { conversationId } = req.params;

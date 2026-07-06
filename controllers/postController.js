@@ -5,21 +5,7 @@ import { geoCode } from "../utils/geoCode.js";
 
 export const createPost = async (req, res, next) => {
   try {
-    const {
-      title,
-      description,
-      category,
-      address,
-      location,
-      type,
-      budget,
-      timeline,
-      expiryDays,
-      expiresAt,
-      questions,
-      contactMethods,
-      images,
-    } = req.body;
+    const { title, description, category, address, type, budget, timeline, expiryDays, expiresAt } = req.body;
 
     if (!title || !description || !category || !address) {
       return res.status(400).json({
@@ -27,8 +13,34 @@ export const createPost = async (req, res, next) => {
         message: "Required fields are missing",
       });
     }
+
+    // Parse complex fields — may arrive as JSON strings when sent via FormData
+    let location = req.body.location;
+    if (typeof location === "string") {
+      try { location = JSON.parse(location); } catch { location = null; }
+    }
+
+    let questions = req.body.questions;
+    if (typeof questions === "string") {
+      try { questions = JSON.parse(questions); } catch { questions = []; }
+    }
+
+    let contactMethods = req.body.contactMethods;
+    if (typeof contactMethods === "string") {
+      try { contactMethods = JSON.parse(contactMethods); } catch { contactMethods = null; }
+    }
+
+    // Images: prefer multer-uploaded files (Cloudinary URLs), fall back to body
+    let imageUrls = [];
+    if (req.files && req.files.length > 0) {
+      imageUrls = req.files.map((f) => f.path);
+    } else if (req.body.images) {
+      const raw = req.body.images;
+      imageUrls = Array.isArray(raw) ? raw : [];
+    }
+
     let coordinates = location?.coordinates;
-    if (!location?.coordinates) {
+    if (!coordinates) {
       coordinates = await geoCode(address);
     }
 
@@ -48,7 +60,7 @@ export const createPost = async (req, res, next) => {
       expiresAt,
       questions: questions || [],
       contactMethods,
-      images: images || [],
+      images: imageUrls,
       author: req.user._id,
     });
 

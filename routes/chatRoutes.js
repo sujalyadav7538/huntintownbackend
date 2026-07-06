@@ -4,6 +4,8 @@ import { verifyToken } from "../middlewares/authMiddleware.js";
 import {
   getConversationMessages,
   getMyConversations,
+  getPostsWithConversations,
+  getConversationsByPost,
   markMessagesAsRead,
   sendMessage,
 } from "../controllers/chatController.js";
@@ -11,6 +13,10 @@ import {
 const router = express.Router();
 
 router.get("/conversations", verifyToken, getMyConversations);
+
+// Post-first routes — must be declared BEFORE /:conversationId to avoid param conflicts
+router.get("/posts", verifyToken, getPostsWithConversations);
+router.get("/posts/:postId/conversations", verifyToken, getConversationsByPost);
 
 router.get("/:conversationId/messages", verifyToken, getConversationMessages);
 

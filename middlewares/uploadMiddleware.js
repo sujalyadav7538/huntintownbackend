@@ -42,4 +42,21 @@ const upload = multer({
   },
 });
 
+// ── Post-image storage (landscape, no face crop) ──────────────────────────
+const postImageStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async (_req, _file) => ({
+    folder: "huntintown/posts",
+    allowed_formats: ["jpg", "jpeg", "png", "webp"],
+    transformation: [{ width: 1200, height: 900, crop: "limit", quality: "auto:best" }],
+    public_id: `post_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+  }),
+});
+
+export const uploadPostImages = multer({
+  storage: postImageStorage,
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
 export default upload;
