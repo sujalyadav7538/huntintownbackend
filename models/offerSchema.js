@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { MODEL_NAMES, OFFER_STATUS } from "../config/constants.js";
 
 const answerSchema = new mongoose.Schema(
   {
@@ -18,13 +19,13 @@ const offerSchema = new mongoose.Schema(
   {
     postId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Post",
+      ref: MODEL_NAMES.POST,
       required: true,
     },
 
     offeredBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: MODEL_NAMES.USER,
       required: true,
     },
 
@@ -37,13 +38,19 @@ const offerSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "accepted", "rejected", "completed", "cancelled"],
-      default: "pending",
+      enum: Object.values(OFFER_STATUS),
+      default: OFFER_STATUS.PENDING,
     },
+
+    acceptedAt: Date,
+
+    completedAt: Date,
+
+    cancelledAt: Date,
   },
   {
     timestamps: true,
   },
 );
 
-export default mongoose.model("Offer", offerSchema);
+export default mongoose.model(MODEL_NAMES.OFFER, offerSchema);

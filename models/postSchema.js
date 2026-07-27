@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { MODEL_NAMES, POST_STATUS, POST_TYPE, GEO_TYPE } from "../config/constants.js";
 
 const postSchema = new mongoose.Schema(
   {
@@ -29,8 +30,8 @@ const postSchema = new mongoose.Schema(
     location: {
       type: {
         type: String,
-        enum: ["Point"],
-        default: "Point",
+        enum: [GEO_TYPE.POINT],
+        default: GEO_TYPE.POINT,
       },
 
       coordinates: {
@@ -41,8 +42,8 @@ const postSchema = new mongoose.Schema(
 
     type: {
       type: String,
-      enum: ["help_needed"],
-      default: "help_needed",
+      enum: Object.values(POST_TYPE),
+      default: POST_TYPE.HELP_NEEDED,
     },
 
     budget: {
@@ -54,8 +55,8 @@ const postSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["live", "in_progress", "completed", "expired", "cancelled"],
-      default: "live",
+      enum: Object.values(POST_STATUS),
+      default: POST_STATUS.LIVE,
     },
 
     expiryDays: {
@@ -100,21 +101,21 @@ const postSchema = new mongoose.Schema(
 
     author: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: MODEL_NAMES.USER,
       required: true,
     },
 
-    comments: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Comment",
-      },
-    ],
+    applicants:{
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: MODEL_NAMES.USER,
+      default: [],
+    },
 
     offersCount: {
       type: Number,
       default: 0,
     },
+    
   },
   {
     timestamps: true,
@@ -126,4 +127,4 @@ postSchema.index({
   location: "2dsphere",
 });
 
-export default mongoose.model("Post", postSchema);
+export default mongoose.model(MODEL_NAMES.POST, postSchema);

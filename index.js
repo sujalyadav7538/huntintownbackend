@@ -16,6 +16,7 @@ import profileRoute from "./routes/profileRoute.js";
 import dataRoute from "./routes/dataRoute.js";
 import offerRoute from "./routes/offerRoutes.js";
 import chatRoute from "./routes/chatRoutes.js";
+import ratingRoute from "./routes/ratingRoutes.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -60,6 +61,7 @@ app.use("/api/profile", profileRoute);
 app.use("/api/data", dataRoute);
 app.use("/api/offers", offerRoute);
 app.use("/api/chat", chatRoute);
+app.use("/api/rating", ratingRoute);
 
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;

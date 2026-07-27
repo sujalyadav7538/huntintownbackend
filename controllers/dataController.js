@@ -1,8 +1,9 @@
 import Post from "../models/postSchema.js";
+import { POST_STATUS } from "../config/constants.js";
 
 export const getLivePosts = async (req, res) => {
   try {
-    const count = await Post.countDocuments({ status: "Live" });
+    const count = await Post.countDocuments({ status: POST_STATUS.LIVE });
 
     res.status(200).json({
       success: true,

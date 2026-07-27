@@ -2,10 +2,22 @@ import mongoose from "mongoose";
 import Post from "../models/postSchema.js";
 import Offer from "../models/offerSchema.js";
 import { geoCode } from "../utils/geoCode.js";
+import { updateUserMetrics } from "./userMetricController.js";
+import { METRIC_TYPES, ACTIONS, GEO_TYPE } from "../config/constants.js";
 
 export const createPost = async (req, res, next) => {
   try {
-    const { title, description, category, address, type, budget, timeline, expiryDays, expiresAt } = req.body;
+    const {
+      title,
+      description,
+      category,
+      address,
+      type,
+      budget,
+      timeline,
+      expiryDays,
+      expiresAt,
+    } = req.body;
 
     if (!title || !description || !category || !address) {
       return res.status(400).json({
@@ -17,17 +29,29 @@ export const createPost = async (req, res, next) => {
     // Parse complex fields — may arrive as JSON strings when sent via FormData
     let location = req.body.location;
     if (typeof location === "string") {
-      try { location = JSON.parse(location); } catch { location = null; }
+      try {
+        location = JSON.parse(location);
+      } catch {
+        location = null;
+      }
     }
 
     let questions = req.body.questions;
     if (typeof questions === "string") {
-      try { questions = JSON.parse(questions); } catch { questions = []; }
+      try {
+        questions = JSON.parse(questions);
+      } catch {
+        questions = [];
+      }
     }
 
     let contactMethods = req.body.contactMethods;
     if (typeof contactMethods === "string") {
-      try { contactMethods = JSON.parse(contactMethods); } catch { contactMethods = null; }
+      try {
+        contactMethods = JSON.parse(contactMethods);
+      } catch {
+        contactMethods = null;
+      }
     }
 
     // Images: prefer multer-uploaded files (Cloudinary URLs), fall back to body
@@ -50,7 +74,7 @@ export const createPost = async (req, res, next) => {
       category,
       address,
       location: {
-        type: "Point",
+        type: GEO_TYPE.POINT,
         coordinates,
       },
       type,
@@ -65,6 +89,11 @@ export const createPost = async (req, res, next) => {
     });
 
     await post.populate("author", "name avatar email rating location");
+
+    await updateUserMetrics(req.user._id, [
+      { type: METRIC_TYPES.HUNTER, action: ACTIONS.POST_CREATED },
+      { type: METRIC_TYPES.ACTIVITY, action: ACTIONS.POST_CREATED },
+    ]);
 
     return res.status(201).json({
       success: true,
@@ -181,7 +210,7 @@ export const updatePost = async (req, res, next) => {
           message: "Coordinates must be an array of [longitude, latitude]",
         });
       }
-      post.location = { type: "Point", coordinates };
+      post.location = { type: GEO_TYPE.POINT, coordinates };
     }
 
     if (title !== undefined) post.title = title;
@@ -291,7 +320,7 @@ export const getAvailablePosts = async (req, res, next) => {
       _id: {
         $nin: appliedPostIds,
       },
-      status: "live",
+      status: POST_STATUS.LIVE,
     })
       .populate("author", "name avatar rating location")
       .sort({
@@ -304,6 +333,77 @@ export const getAvailablePosts = async (req, res, next) => {
       posts,
     });
   } catch (error) {
+    next(error);
+  }
+};
+
+export const markPostCompleted = async (req, res, next) => {
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      await session.abortTransaction();
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid post id" });
+    }
+
+    const post = await Post.findById(id).session(session);
+
+    if (!post) {
+      await session.abortTransaction();
+      return res
+        .status(404)
+        .json({ success: false, message: "Post not found" });
+    }
+
+    if (post.author.toString() !== req.user._id) {
+      await session.abortTransaction();
+      return res.status(403).json({ success: false, message: "Unauthorized" });
+    }
+
+    const nonCompletableStatuses = [
+      POST_STATUS.COMPLETED,
+      POST_STATUS.CANCELLED,
+      POST_STATUS.EXPIRED,
+    ];
+    if (nonCompletableStatuses.includes(post.status)) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: `Post is already ${post.status} and cannot be marked as completed`,
+      });
+    }
+
+    post.status = POST_STATUS.COMPLETED;
+    await post.save({ session });
+
+    await updateUserMetrics(
+      req.user._id,
+      [
+        { type: METRIC_TYPES.HUNTER, action: ACTIONS.POST_COMPLETED },
+        { type: METRIC_TYPES.ACTIVITY, action: ACTIONS.POST_COMPLETED },
+      ],
+      session,
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    await post.populate("author", "name avatar rating location");
+
+    return res.status(200).json({
+      success: true,
+      message: "Post marked as completed",
+      post,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     next(error);
   }
 };

@@ -8,6 +8,7 @@ import {
   updatePost,
   deletePost,
   getAvailablePosts,
+  markPostCompleted,
 } from "../controllers/postController.js";
 import { verifyToken } from "../middlewares/authMiddleware.js";
 import { uploadPostImages } from "../middlewares/uploadMiddleware.js";
@@ -21,7 +22,7 @@ router.get("/", getAllPosts);
 router.get("/getAvailablePosts", verifyToken, getAvailablePosts);
 router.get("/:id", getPostById);
 
-
+router.patch("/:id/complete", verifyToken, markPostCompleted);
 router.put("/:id", verifyToken, updatePost);
 
 router.delete("/:id", verifyToken, deletePost);

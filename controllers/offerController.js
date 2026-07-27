@@ -4,22 +4,30 @@ import Conversation from "../models/conversationSchema.js";
 import Offer from "../models/offerSchema.js";
 import Post from "../models/postSchema.js";
 import User from "../models/userSchema.js";
+import { updateUserMetrics } from "./userMetricController.js";
+import { METRIC_TYPES, ACTIONS } from "../config/constants.js";
 
 export const createOffer = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     const { postId, message, answers } = req.body;
     const userId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(postId)) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "Invalid post id",
       });
     }
 
-    const post = await Post.findById(postId);
+    const post = await Post.findById(postId).session(session);
 
     if (!post) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({
         success: false,
         message: "Post not found",
@@ -27,13 +35,17 @@ export const createOffer = async (req, res, next) => {
     }
 
     if (post.author.toString() === userId) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "You cannot offer help on your own post",
       });
     }
 
-    if (post.status !== "live") {
+    if (post.status !== POST_STATUS.LIVE) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "Post is not accepting offers",
@@ -41,6 +53,8 @@ export const createOffer = async (req, res, next) => {
     }
 
     if (post.expiresAt && post.expiresAt < new Date()) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "Post has expired",
@@ -48,6 +62,8 @@ export const createOffer = async (req, res, next) => {
     }
 
     if (answers && !Array.isArray(answers)) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "Answers must be an array",
@@ -57,24 +73,53 @@ export const createOffer = async (req, res, next) => {
     const existingOffer = await Offer.findOne({
       postId,
       offeredBy: userId,
-    });
+    }).session(session);
 
     if (existingOffer) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "You have already submitted an offer.",
       });
     }
 
-    const offer = await Offer.create({
-      postId,
-      offeredBy: userId,
-      message: message?.trim() || "",
-      answers: answers || [],
-    });
+    const [offer] = await Offer.create(
+      [
+        {
+          postId,
+          offeredBy: userId,
+          message: message?.trim() || "",
+          answers: answers || [],
+        },
+      ],
+      { session },
+    );
 
     post.offersCount += 1;
-    await post.save();
+    await post.save({ session });
+
+    // Helper: submitted an offer
+    await updateUserMetrics(
+      req.user._id,
+      [
+        { type: METRIC_TYPES.HELPER, action: ACTIONS.SUBMITTED },
+        {
+          type: METRIC_TYPES.ACTIVITY,
+          action: ACTIVITY_ACTIONS.SUBMITTED,
+        },
+      ],
+      session,
+    );
+    // Hunter: received a new offer on their post
+    await updateUserMetrics(
+      post.author,
+      [{ type: METRIC_TYPES.HUNTER, action: ACTIONS.OFFER_RECEIVED }],
+      session,
+    );
+
+    await session.commitTransaction();
+    session.endSession();
 
     await offer.populate("offeredBy", "name avatar");
 
@@ -84,6 +129,8 @@ export const createOffer = async (req, res, next) => {
       offer,
     });
   } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
     next(err);
   }
 };
@@ -161,7 +208,7 @@ export const acceptOffer = async (req, res, next) => {
       });
     }
 
-    if (offer.status === "accepted") {
+    if (offer.status === OFFER_STATUS.ACCEPTED) {
       await session.abortTransaction();
       return res.status(400).json({
         success: false,
@@ -178,7 +225,8 @@ export const acceptOffer = async (req, res, next) => {
         message: "Post not found",
       });
     }
-
+    console.log("post.author.toString():", post.author.toString());
+    console.log("userId:", userId.toString());
     if (post.author.toString() !== userId) {
       await session.abortTransaction();
       return res.status(403).json({
@@ -187,7 +235,7 @@ export const acceptOffer = async (req, res, next) => {
       });
     }
 
-    if (post.status !== "live") {
+    if (post.status !== POST_STATUS.LIVE) {
       await session.abortTransaction();
       return res.status(400).json({
         success: false,
@@ -195,21 +243,21 @@ export const acceptOffer = async (req, res, next) => {
       });
     }
 
-    offer.status = "accepted";
+    offer.status = OFFER_STATUS.ACCEPTED;
     await offer.save({ session });
 
-    post.status = "in_progress";
+    post.status = POST_STATUS.IN_PROGRESS;
     await post.save({ session });
 
     await Offer.updateMany(
       {
         postId: post._id,
         _id: { $ne: offer._id },
-        status: "pending",
+        status: OFFER_STATUS.PENDING,
       },
       {
         $set: {
-          status: "rejected",
+          status: OFFER_STATUS.REJECTED,
         },
       },
       {
@@ -228,8 +276,13 @@ export const acceptOffer = async (req, res, next) => {
             {
               post: post._id,
               offerId: offer._id,
+              hunter: post.author,
+              helper: offer.offeredBy,
               participants: [post.author, offer.offeredBy],
-              status: "active",
+              status: CONVERSATION_STATUS.ACTIVE,
+              responseTracking: {
+                acceptedAt: new Date(),
+              },
               lastMessage: null,
               lastMessageAt: null,
             },
@@ -238,6 +291,33 @@ export const acceptOffer = async (req, res, next) => {
         )
       )[0];
     }
+
+    const applicants = post?.applicants;
+    post.applicants = [...applicants, offer.offeredBy];
+    await post.save({ session });
+
+    // Helper: their offer was accepted
+    await updateUserMetrics(
+      offer.offeredBy,
+      [{ type: METRIC_TYPES.HELPER, action: ACTIONS.OFFER_ACCEPTED }],
+      session,
+    );
+    // Hunter: accepted an offer
+    await updateUserMetrics(
+      req.user._id,
+      [
+        { type: METRIC_TYPES.HUNTER, action: ACTIONS.OFFER_ACCEPTED },
+        {
+          type: METRIC_TYPES.ACTIVITY,
+          action: ACTIONS.OFFER_ACCEPTED,
+        },
+        {
+          type: METRIC_TYPES.ACTIVITY,
+          action: ACTIONS.CONVERSATION_STARTED,
+        },
+      ],
+      session,
+    );
 
     await session.commitTransaction();
     session.endSession();
@@ -267,29 +347,37 @@ export const acceptOffer = async (req, res, next) => {
 };
 
 export const rejectOffer = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     const { offerId } = req.params;
     const userId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(offerId)) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "Invalid offer id",
       });
     }
 
-    const offer = await Offer.findById(offerId);
+    const offer = await Offer.findById(offerId).session(session);
 
     if (!offer) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({
         success: false,
         message: "Offer not found",
       });
     }
 
-    const post = await Post.findById(offer.postId);
+    const post = await Post.findById(offer.postId).session(session);
 
     if (!post) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({
         success: false,
         message: "Post not found",
@@ -297,28 +385,47 @@ export const rejectOffer = async (req, res, next) => {
     }
 
     if (post.author.toString() !== userId) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(403).json({
         success: false,
         message: "Unauthorized",
       });
     }
 
-    if (offer.status === "accepted") {
+    if (offer.status === OFFER_STATUS.ACCEPTED) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "Accepted offer cannot be rejected",
       });
     }
 
-    if (offer.status === "rejected") {
+    if (offer.status === OFFER_STATUS.REJECTED) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "Offer already rejected",
       });
     }
 
-    offer.status = "rejected";
-    await offer.save();
+    offer.status = OFFER_STATUS.REJECTED;
+    await offer.save({ session });
+
+    // Update the user metric for the helper and hunter
+    await updateUserMetrics(
+      offer.offeredBy,
+      [
+        { type: METRIC_TYPES.HELPER, action: ACTIONS.OFFER_CANCELLED },
+        { type: METRIC_TYPES.HUNTER, action: ACTIONS.OFFER_CANCELLED },
+      ],
+      session,
+    );
+
+    await session.commitTransaction();
+    session.endSession();
 
     return res.status(200).json({
       success: true,
@@ -326,6 +433,8 @@ export const rejectOffer = async (req, res, next) => {
       offer,
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     next(error);
   }
 };

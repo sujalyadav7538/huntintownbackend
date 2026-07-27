@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { MODEL_NAMES, GEO_TYPE, VERIFICATION_STATUS } from "../config/constants.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -25,11 +26,22 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
-    // Profile
+    // Basic Profile
     name: {
       type: String,
       required: true,
       trim: true,
+    },
+
+    bio: {
+      type: String,
+      default: "",
+      maxlength: 700,
+    },
+
+    role: {
+      type: String,
+      default: "",
     },
 
     avatar: {
@@ -52,38 +64,7 @@ const userSchema = new mongoose.Schema(
       default: "",
     },
 
-    bio: {
-      type: String,
-      default: "",
-      maxlength: 300,
-    },
-
-    role: {
-      type: String,
-      default: "",
-    },
-
-    // Human readable address
-    address: {
-      type: String,
-      default: "",
-    },
-
-    // GeoJSON Location
-    location: {
-      type: {
-        type: String,
-        enum: ["Point"],
-        default: "Point",
-        required: false,
-      },
-
-      coordinates: {
-        type: [Number], // [longitude, latitude]
-        default: undefined,
-      },
-    },
-
+    // Contact
     phone: {
       type: String,
       default: "",
@@ -94,6 +75,7 @@ const userSchema = new mongoose.Schema(
       default: "",
     },
 
+    // Skills
     skills: [
       {
         type: String,
@@ -101,27 +83,23 @@ const userSchema = new mongoose.Schema(
       },
     ],
 
-    // Trust
-    rating: {
-      type: Number,
-      default: 0,
-      min: 0,
-      max: 5,
+    // Address
+    address: {
+      type: String,
+      default: "",
     },
 
-    totalReviews: {
-      type: Number,
-      default: 0,
-    },
+    location: {
+      type: {
+        type: String,
+        enum: [GEO_TYPE.POINT],
+        default: GEO_TYPE.POINT,
+      },
 
-    completedJobs: {
-      type: Number,
-      default: 0,
-    },
-
-    reputation: {
-      type: Number,
-      default: 0,
+      coordinates: {
+        type: [Number],
+        default: undefined,
+      },
     },
 
     // Verification
@@ -142,8 +120,8 @@ const userSchema = new mongoose.Schema(
 
     governmentVerificationStatus: {
       type: String,
-      enum: ["none", "pending", "verified", "rejected"],
-      default: "none",
+      enum: Object.values(VERIFICATION_STATUS),
+      default: VERIFICATION_STATUS.NONE,
     },
 
     // Account
@@ -161,29 +139,19 @@ const userSchema = new mongoose.Schema(
     followers: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
+        ref: MODEL_NAMES.USER,
       },
     ],
 
     following: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
+        ref: MODEL_NAMES.USER,
       },
     ],
 
-    // Counters (avoid aggregation every request)
+    // Statistics
     postsCount: {
-      type: Number,
-      default: 0,
-    },
-
-    offersSubmittedCount: {
-      type: Number,
-      default: 0,
-    },
-
-    offersAcceptedCount: {
       type: Number,
       default: 0,
     },
@@ -198,4 +166,8 @@ const userSchema = new mongoose.Schema(
   },
 );
 
-export default mongoose.model("User", userSchema);
+userSchema.index({
+  location: "2dsphere",
+});
+
+export default mongoose.model(MODEL_NAMES.USER, userSchema);
