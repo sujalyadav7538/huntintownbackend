@@ -5,7 +5,13 @@ import Offer from "../models/offerSchema.js";
 import Post from "../models/postSchema.js";
 import User from "../models/userSchema.js";
 import { updateUserMetrics } from "./userMetricController.js";
-import { METRIC_TYPES, ACTIONS } from "../config/constants.js";
+import {
+  METRIC_TYPES,
+  ACTIONS,
+  POST_STATUS,
+  OFFER_STATUS,
+  CONVERSATION_STATUS,
+} from "../config/constants.js";
 
 export const createOffer = async (req, res, next) => {
   const session = await mongoose.startSession();
@@ -43,9 +49,10 @@ export const createOffer = async (req, res, next) => {
       });
     }
 
-    if (post.status !== POST_STATUS.LIVE) {
+    if (![POST_STATUS.LIVE, POST_STATUS.IN_PROGRESS].includes(post.status)) {
       await session.abortTransaction();
       session.endSession();
+
       return res.status(400).json({
         success: false,
         message: "Post is not accepting offers",
@@ -103,10 +110,10 @@ export const createOffer = async (req, res, next) => {
     await updateUserMetrics(
       req.user._id,
       [
-        { type: METRIC_TYPES.HELPER, action: ACTIONS.SUBMITTED },
+        { type: METRIC_TYPES.HELPER, action: ACTIONS.OFFER_SUBMITTED },
         {
           type: METRIC_TYPES.ACTIVITY,
-          action: ACTIVITY_ACTIONS.SUBMITTED,
+          action: ACTIONS.OFFER_SUBMITTED,
         },
       ],
       session,
@@ -235,7 +242,7 @@ export const acceptOffer = async (req, res, next) => {
       });
     }
 
-    if (post.status !== POST_STATUS.LIVE) {
+    if (![POST_STATUS.LIVE, POST_STATUS.IN_PROGRESS].includes(post.status)) {
       await session.abortTransaction();
       return res.status(400).json({
         success: false,

@@ -1,7 +1,7 @@
-import Conversation from "../models/conversationSchema.js";
-import Message from "../models/messageSchema.js";
-import User from "../models/userSchema.js";
 import mongoose from "mongoose";
+import Conversation from "../models/conversationSchema.js";
+import User from "../models/userSchema.js";
+import { persistChatMessage, populateAndNormalize } from "../utils/chatUtils.js";
 import { updateUserMetrics } from "../controllers/userMetricController.js";
 import { METRIC_TYPES } from "../config/constants.js";
 
@@ -56,12 +56,8 @@ export default function registerChatSocket(io, socket) {
         message: "Joined successfully",
       });
     } catch (err) {
-      console.error(err);
-
-      callback?.({
-        success: false,
-        message: "Internal server error",
-      });
+      console.error("[Socket] join-conversation error:", err);
+      callback?.({ success: false, message: "Internal server error" });
     }
   });
 
@@ -136,115 +132,29 @@ export default function registerChatSocket(io, socket) {
         });
       }
 
-      // Create Message
-      const [message] = await Message.create(
-        [
-          {
-            conversationId,
-            sender: dbUser._id,
-            text: text.trim(),
-            readBy: [dbUser._id],
-            isRead: false,
-          },
-        ],
-        { session },
+      const message = await persistChatMessage(
+        { conversationId, senderId: dbUser._id, messageType: "text", content: text },
+        session,
       );
 
-      // Update Conversation
-      conversation.lastMessage = message._id;
-      conversation.lastMessageAt = message.createdAt;
-
-      await conversation.save({ session });
-
-      // Commit transaction
       await session.commitTransaction();
       session.endSession();
 
-      // Populate sender for frontend
-      const populatedMessage = await Message.findById(message._id)
-        .populate("sender", "id name avatar")
-        .lean();
+      const normalized = await populateAndNormalize(message._id);
 
-      // Emit to all participants
-      io.to(conversationId).emit("new-message", populatedMessage);
+      io.to(conversationId).emit("new-message", normalized);
+      callback?.({ success: true, message: normalized });
 
-      callback?.({
-        success: true,
-        message: populatedMessage,
-      });
-
-      // Fire-and-forget after commit — never blocks message delivery.
-      // Passes the already-loaded conversation + message; no extra DB fetch.
+      // Fire-and-forget — never blocks message delivery
       updateUserMetrics(dbUser._id, [
         { type: METRIC_TYPES.RESPONSE, conversation, message },
       ]).catch((err) => console.error("[Metric] responseMetrics failed:", err));
-
     } catch (error) {
-      // Guard: only abort if the transaction hasn't been committed yet
-      if (session.inTransaction()) {
-        await session.abortTransaction();
-      }
+      if (session.inTransaction()) await session.abortTransaction();
       session.endSession();
-
-      console.error(error);
-
-      callback?.({
-        success: false,
-        message: "Failed to send message",
-      });
+      console.error("[Socket] send-message error:", error);
+      callback?.({ success: false, message: "Failed to send message" });
     }
   });
 
-  // DEAD: "mark-read" socket event — never emitted from the frontend.
-  // The HTTP PATCH /:conversationId/read route (markMessagesAsRead) is also unused.
-  // The "messages-read" broadcast below is therefore also unreachable from the client.
-  // socket.on("mark-read", async ({ conversationId }, callback) => {
-  //   try {
-  //     const dbUser = await User.findOne({ id: socket.user.id }).select("_id");
-  //
-  //     if (!dbUser) {
-  //       return callback?.({
-  //         success: false,
-  //         message: "User not found",
-  //       });
-  //     }
-  //
-  //     await Message.updateMany(
-  //       {
-  //         conversationId,
-  //         sender: { $ne: dbUser._id },
-  //         readBy: { $ne: dbUser._id },
-  //       },
-  //       {
-  //         $push: {
-  //           readBy: dbUser._id,
-  //         },
-  //         $set: {
-  //           isRead: true,
-  //           readAt: new Date(),
-  //         },
-  //       },
-  //     );
-  //
-  //     io.to(conversationId).emit("messages-read", {
-  //       conversationId,
-  //       userId: socket.user.id,
-  //     });
-  //
-  //     callback?.({
-  //       success: true,
-  //     });
-  //   } catch (err) {
-  //     console.error(err);
-  //
-  //     callback?.({
-  //       success: false,
-  //       message: "Failed to mark messages as read",
-  //     });
-  //   }
-  // });
-
-  socket.on("disconnect", () => {
-    console.log(`[Socket] ${socket.user.id} disconnected`);
-  });
 }

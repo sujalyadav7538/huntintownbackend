@@ -29,6 +29,11 @@ const ratingSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    direction: {
+      type: String,
+      enum: ["hunter_to_helper", "helper_to_hunter"],
+      default: "hunter_to_helper",
+    },
   },
   {
     timestamps: { createdAt: true, updatedAt: false },
@@ -36,7 +41,7 @@ const ratingSchema = new mongoose.Schema(
 );
 
 ratingSchema.index(
-  { postId: 1, hunter: 1, helper: 1 },
+  { postId: 1, hunter: 1, helper: 1, direction: 1 },
   { unique: true },
 );
 export default mongoose.model(MODEL_NAMES.RATING, ratingSchema);

@@ -12,7 +12,6 @@ import {
 } from "../controllers/postController.js";
 import { verifyToken } from "../middlewares/authMiddleware.js";
 import { uploadPostImages } from "../middlewares/uploadMiddleware.js";
-import { geoCode } from "../utils/geoCode.js";
 
 const router = express.Router();
 

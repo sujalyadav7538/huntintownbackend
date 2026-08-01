@@ -59,4 +59,35 @@ export const uploadPostImages = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
+const chatAttachmentStorage = multer.memoryStorage();
+
+const chatAttachmentFilter = (_req, file, cb) => {
+  const allowedMimePrefixes = ["image/", "video/", "audio/"];
+  const allowedMimeTypes = [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "text/plain",
+  ];
+
+  if (
+    allowedMimePrefixes.some((prefix) => file.mimetype.startsWith(prefix)) ||
+    allowedMimeTypes.includes(file.mimetype)
+  ) {
+    cb(null, true);
+  } else {
+    cb(new Error("Unsupported file type for chat attachment"), false);
+  }
+};
+
+export const uploadChatAttachment = multer({
+  storage: chatAttachmentStorage,
+  fileFilter: chatAttachmentFilter,
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
+
 export default upload;

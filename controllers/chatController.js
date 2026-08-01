@@ -1,30 +1,14 @@
 import Conversation from "../models/conversationSchema.js";
 import Message from "../models/messageSchema.js";
-// updateResponseMetric removed — was only used in sendMessage (now dead, moved to chatSocket.js)
-
-// DEAD: getMyConversations — GET /api/chat/conversations route is unused.
-// The fetchConversations thunk in frontend/src/store/thunks.ts calls this endpoint
-// but that thunk is never imported or dispatched anywhere in the app.
-// export const getMyConversations = async (req, res, next) => {
-//   try {
-//     const userId = req.user._id;
-//
-//     const conversations = await Conversation.find({
-//       participants: userId,
-//     })
-//       .populate("post", "title category budget location status")
-//       .populate("participants", "id name avatar role rating location")
-//       .sort({ updatedAt: -1 });
-//
-//     return res.status(200).json({
-//       success: true,
-//       count: conversations.length,
-//       data: conversations,
-//     });
-//   } catch (error) {
-//     next(error);
-//   }
-// };
+import User from "../models/userSchema.js";
+import cloudinary from "../utils/cloudinary.js";
+import { updateUserMetrics } from "./userMetricController.js";
+import { METRIC_TYPES } from "../config/constants.js";
+import {
+  inferMessageType,
+  persistChatMessage,
+  populateAndNormalize,
+} from "../utils/chatUtils.js";
 
 /**
  * GET /api/chat/posts
@@ -86,7 +70,10 @@ export const getConversationsByPost = async (req, res, next) => {
       post: postId,
     })
       .populate("post", "title category budget address status")
-      .populate("participants", "id name avatar role rating location")
+      .populate(
+        "participants",
+        "id name avatar role rating location address isOnline lastSeen",
+      )
       .sort({ updatedAt: -1 });
 
     return res.status(200).json({
@@ -136,206 +123,165 @@ export const getConversationMessages = async (req, res, next) => {
       });
     }
 
-    const messages = await Message.find({
-      conversationId,
-    })
+    const messages = await Message.find({ conversationId })
       .populate("sender", "id name avatar")
-      .sort({
-        createdAt: 1,
-      });
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const normalizedMessages = messages.map((msg) => ({
+      ...msg,
+      conversationId: String(msg.conversationId),
+      _id: String(msg._id),
+      text: msg.content || msg.attachment?.fileName || "",
+    }));
 
     return res.status(200).json({
       success: true,
-      count: messages.length,
-      data: messages,
+      count: normalizedMessages.length,
+      data: normalizedMessages,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// DEAD: sendMessage (HTTP) — POST /api/chat/:conversationId/message is never called from the frontend.
-// The frontend exclusively uses the socket "send-message" event (MessageInput.tsx) to send messages.
-// The socket handler in chatSocket.js is the live counterpart that handles response metrics too.
-// export const sendMessage = async (req, res, next) => {
-//   const session = await mongoose.startSession();
-//   session.startTransaction();
-//
-//   try {
-//     const { conversationId } = req.params;
-//     const { text } = req.body;
-//
-//     const userId = req.user._id;
-//
-//     if (!text?.trim()) {
-//       await session.abortTransaction();
-//       session.endSession();
-//
-//       return res.status(400).json({
-//         success: false,
-//         message: "Message is required",
-//       });
-//     }
-//
-//     const conversation =
-//       await Conversation.findById(conversationId).session(session);
-//
-//     if (!conversation) {
-//       await session.abortTransaction();
-//       session.endSession();
-//
-//       return res.status(404).json({
-//         success: false,
-//         message: "Conversation not found",
-//       });
-//     }
-//
-//     const isParticipant = conversation.participants.some((participant) =>
-//       participant.equals(userId),
-//     );
-//
-//     if (!isParticipant) {
-//       await session.abortTransaction();
-//       session.endSession();
-//
-//       return res.status(403).json({
-//         success: false,
-//         message: "Unauthorized",
-//       });
-//     }
-//
-//     const [createdMessage] = await Message.create(
-//       [
-//         {
-//           conversationId,
-//           sender: userId,
-//           text: text.trim(),
-//           readBy: [userId],
-//         },
-//       ],
-//       { session },
-//     );
-//
-//     // ----------------------------------------
-//     // RESPONSE METRIC
-//     // ----------------------------------------
-//
-//     // First message after offer acceptance
-//     if (!conversation.responseTracking.firstMessageAt) {
-//       const responseTime = Math.ceil(
-//         (createdMessage.createdAt - conversation.responseTracking.acceptedAt) /
-//           (1000 * 60),
-//       );
-//
-//       if (
-//         conversation.hunter.equals(userId) &&
-//         !conversation.responseTracking.hunterCompleted
-//       ) {
-//         await updateResponseMetric(
-//           conversation.hunter,
-//           "hunter",
-//           responseTime,
-//           session,
-//         );
-//
-//         conversation.responseTracking.hunterCompleted = true;
-//       } else if (
-//         conversation.helper.equals(userId) &&
-//         !conversation.responseTracking.helperCompleted
-//       ) {
-//         await updateResponseMetric(
-//           conversation.helper,
-//           "helper",
-//           responseTime,
-//           session,
-//         );
-//
-//         conversation.responseTracking.helperCompleted = true;
-//       }
-//
-//       conversation.responseTracking.firstMessageAt = createdMessage.createdAt;
-//     }
-//
-//     // Second participant's first response
-//     else {
-//       const responseTime = Math.ceil(
-//         (createdMessage.createdAt -
-//           conversation.responseTracking.firstMessageAt) /
-//           (1000 * 60),
-//       );
-//
-//       if (
-//         conversation.hunter.equals(userId) &&
-//         !conversation.responseTracking.hunterCompleted
-//       ) {
-//         await updateResponseMetric(
-//           conversation.hunter,
-//           "hunter",
-//           responseTime,
-//           session,
-//         );
-//
-//         conversation.responseTracking.hunterCompleted = true;
-//       } else if (
-//         conversation.helper.equals(userId) &&
-//         !conversation.responseTracking.helperCompleted
-//       ) {
-//         await updateResponseMetric(
-//           conversation.helper,
-//           "helper",
-//           responseTime,
-//           session,
-//         );
-//
-//         conversation.responseTracking.helperCompleted = true;
-//       }
-//     }
-//
-//     conversation.lastMessage = createdMessage._id;
-//     conversation.lastMessageAt = createdMessage.createdAt;
-//
-//     await conversation.save({ session });
-//
-//     await session.commitTransaction();
-//     session.endSession();
-//
-//     return res.status(201).json({
-//       success: true,
-//       data: createdMessage,
-//     });
-//   } catch (error) {
-//     await session.abortTransaction();
-//     session.endSession();
-//     next(error);
-//   }
-// };
+/**
+ * POST /api/chat/upload
+ * Uploads a single file to Cloudinary and returns attachment metadata.
+ */
+export const uploadAttachment = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Attachment file is required",
+      });
+    }
 
-// DEAD: markMessagesAsRead — PATCH /api/chat/:conversationId/read is never called from the frontend.
-// The socket "mark-read" event in chatSocket.js is also never emitted by any frontend code.
-// export const markMessagesAsRead = async (req, res, next) => {
-//   try {
-//     const { conversationId } = req.params;
-//     const userId = req.user._id;
-//
-//     await Message.updateMany(
-//       {
-//         conversationId,
-//         readBy: {
-//           $ne: userId,
-//         },
-//       },
-//       {
-//         $push: {
-//           readBy: userId,
-//         },
-//       },
-//     );
-//
-//     return res.status(200).json({
-//       success: true,
-//       message: "Messages marked as read",
-//     });
-//   } catch (error) {
-//     next(error);
-//   }
-// };
+    const base64Data = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+
+    const uploaded = await cloudinary.uploader.upload(base64Data, {
+      folder: "huntintown/chat",
+      resource_type: "auto",
+      public_id: `chat_${req.user.id}_${Date.now()}`,
+      use_filename: true,
+      unique_filename: true,
+      overwrite: false,
+    });
+
+    const messageType = inferMessageType(req.file.mimetype);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        url: uploaded.secure_url,
+        publicId: uploaded.public_id,
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        size: req.file.size,
+        thumbnail: uploaded.secure_url,
+        messageType,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/chat/messages
+ * Persists a chat message (text or attachment metadata) and broadcasts it.
+ */
+export const createMessage = async (req, res, next) => {
+  try {
+    const {
+      conversationId,
+      content = "",
+      messageType = "text",
+      attachment,
+    } = req.body;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Conversation id is required",
+      });
+    }
+
+    const dbUser = await User.findOne({ id: req.user.id }).select("_id");
+    if (!dbUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({
+        success: false,
+        message: "Conversation not found",
+      });
+    }
+
+    const isParticipant = conversation.participants.some((participant) =>
+      participant.equals(dbUser._id),
+    );
+
+    if (!isParticipant) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    if (messageType === "text" && !content.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Message cannot be empty",
+      });
+    }
+
+    if (messageType !== "text" && !attachment?.url) {
+      return res.status(400).json({
+        success: false,
+        message: "Attachment metadata is required for file messages",
+      });
+    }
+
+    const createdMessage = await persistChatMessage({
+      conversationId,
+      senderId: dbUser._id,
+      messageType,
+      content,
+      attachment: attachment
+        ? {
+            url: attachment.url || "",
+            publicId: attachment.publicId || "",
+            fileName: attachment.fileName || "",
+            mimeType: attachment.mimeType || "",
+            size: attachment.size || 0,
+            thumbnail: attachment.thumbnail || "",
+          }
+        : undefined,
+    });
+
+    const normalized = await populateAndNormalize(createdMessage._id);
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(conversationId).emit("new-message", normalized);
+    }
+
+    updateUserMetrics(dbUser._id, [
+      { type: METRIC_TYPES.RESPONSE, conversation, message: createdMessage },
+    ]).catch((err) => console.error("[Metric] responseMetrics failed:", err));
+
+    return res.status(201).json({
+      success: true,
+      data: normalized,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

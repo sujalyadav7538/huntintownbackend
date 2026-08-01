@@ -43,6 +43,7 @@ export const io = new Server(server, {
   },
 });
 initializeSocket(io);
+app.set("io", io);
 
 // Connection With Database`
 await connectDB();
@@ -72,10 +73,6 @@ app.use((err, req, res, next) => {
     message,
   });
 });
-
-// app.listen(PORT, () => {
-//   console.log(`Server running on port ${PORT}`);
-// });
 
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

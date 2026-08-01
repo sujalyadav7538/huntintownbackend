@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
-import { MODEL_NAMES, GEO_TYPE, VERIFICATION_STATUS } from "../config/constants.js";
+import {
+  MODEL_NAMES,
+  GEO_TYPE,
+  VERIFICATION_STATUS,
+} from "../config/constants.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -130,6 +134,11 @@ const userSchema = new mongoose.Schema(
       default: true,
     },
 
+    googleId: {
+      type: String,
+      default: null,
+    },
+
     lastSeen: {
       type: Date,
       default: Date.now,
@@ -159,6 +168,19 @@ const userSchema = new mongoose.Schema(
     conversationsCount: {
       type: Number,
       default: 0,
+    },
+    showcase: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: MODEL_NAMES.USER_SHOWCASE,
+    },
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+
+    lastSeen: {
+      type: Date,
+      default: Date.now,
     },
   },
   {

@@ -7,7 +7,6 @@ import Metric from "../models/userMetricSchema.js";
 import UserBadge from "../models/userBadgeSchema.js";
 import { updateUserMetrics } from "./userMetricController.js";
 import { METRIC_TYPES, ACTIONS } from "../config/constants.js";
-
 export const Signup = async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -143,6 +142,90 @@ export const Signin = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: "Login successful",
+      access_token,
+      user: userResponse,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const GoogleSignin = async (req, res, next) => {
+  try {
+    const { access_token: googleAccessToken } = req.body;
+
+    if (!googleAccessToken) {
+      return res.status(400).json({ success: false, message: "Google access token required" });
+    }
+
+    const googleRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${googleAccessToken}` },
+    });
+
+    if (!googleRes.ok) {
+      return res.status(401).json({ success: false, message: "Invalid Google token" });
+    }
+
+    const { sub: googleId, email, name, picture } = await googleRes.json();
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Google account has no email" });
+    }
+
+    let user = await User.findOne({ $or: [{ googleId }, { email }] });
+
+    if (!user) {
+      const session = await mongoose.startSession();
+      session.startTransaction();
+      try {
+        const [created] = await User.create(
+          [
+            {
+              id: uuidv4(),
+              name: name || email.split("@")[0],
+              email,
+              password: await bcrypt.hash(uuidv4(), 10),
+              avatar: picture || "",
+              googleId,
+            },
+          ],
+          { session },
+        );
+        await Metric.create([{ userId: created._id }], { session });
+        await UserBadge.create([{ userId: created._id }], { session });
+        await session.commitTransaction();
+        session.endSession();
+        user = created;
+      } catch (err) {
+        await session.abortTransaction();
+        session.endSession();
+        throw err;
+      }
+    } else if (!user.googleId) {
+      user.googleId = googleId;
+    }
+
+    if (picture && !user.avatar) user.avatar = picture;
+    user.lastSeen = new Date();
+    await user.save();
+
+    updateUserMetrics(user._id, [
+      { type: METRIC_TYPES.ACTIVITY, action: ACTIONS.LOGIN },
+    ]).catch(() => {});
+
+    const access_token = generateAccessToken({
+      _id: user._id,
+      id: user.id,
+      email: user.email,
+      name: user.name,
+    });
+
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    return res.status(200).json({
+      success: true,
+      message: "Google sign-in successful",
       access_token,
       user: userResponse,
     });

@@ -13,6 +13,7 @@ export const MODEL_NAMES = {
   RATING: "Rating",
   METRIC: "Metric",
   USER_BADGE: "UserBadge",
+  USER_SHOWCASE: "UserShowcase",
 };
 
 // ── GeoJSON ───────────────────────────────────────────────────────────────────

@@ -3,7 +3,12 @@ import Post from "../models/postSchema.js";
 import Offer from "../models/offerSchema.js";
 import { geoCode } from "../utils/geoCode.js";
 import { updateUserMetrics } from "./userMetricController.js";
-import { METRIC_TYPES, ACTIONS, GEO_TYPE } from "../config/constants.js";
+import {
+  METRIC_TYPES,
+  ACTIONS,
+  GEO_TYPE,
+  POST_STATUS,
+} from "../config/constants.js";
 
 export const createPost = async (req, res, next) => {
   try {
@@ -320,7 +325,9 @@ export const getAvailablePosts = async (req, res, next) => {
       _id: {
         $nin: appliedPostIds,
       },
-      status: POST_STATUS.LIVE,
+      status: {
+        $in: [POST_STATUS.LIVE, POST_STATUS.IN_PROGRESS],
+      },
     })
       .populate("author", "name avatar rating location")
       .sort({
