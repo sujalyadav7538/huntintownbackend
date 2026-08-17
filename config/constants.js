@@ -7,7 +7,7 @@
 export const MODEL_NAMES = {
   USER: "User",
   POST: "Post",
-  OFFER: "Offer",
+  RESPONSE: "Response",
   CONVERSATION: "Conversation",
   MESSAGE: "Message",
   RATING: "Rating",
@@ -21,8 +21,8 @@ export const GEO_TYPE = {
   POINT: "Point",
 };
 
-// ── Offer status ──────────────────────────────────────────────────────────────
-export const OFFER_STATUS = {
+// ── Response status ─────────────────────────────────────────────────────────
+export const RESPONSE_STATUS = {
   PENDING: "pending",
   ACCEPTED: "accepted",
   REJECTED: "rejected",
@@ -42,6 +42,7 @@ export const POST_STATUS = {
 // ── Post type ─────────────────────────────────────────────────────────────────
 export const POST_TYPE = {
   HELP_NEEDED: "help_needed",
+  OFFER_HELP: "offer_help",
 };
 
 // ── Conversation status ───────────────────────────────────────────────────────
@@ -77,12 +78,12 @@ export const METRIC_TYPES = {
 
 // ── Actions (shared across all metric types — differentiated by `type`) ──────
 export const ACTIONS = {
-  // Offer lifecycle
-  OFFER_SUBMITTED: "offer_submitted",
-  OFFER_ACCEPTED: "offer_accepted",
-  OFFER_COMPLETED: "offer_completed",
-  OFFER_CANCELLED: "offer_cancelled",
-  OFFER_RECEIVED: "offer_received",     // hunter: a new offer landed on their post
+  // Response lifecycle
+  RESPONSE_SUBMITTED: "response_submitted",
+  RESPONSE_ACCEPTED: "response_accepted",
+  RESPONSE_COMPLETED: "response_completed",
+  RESPONSE_CANCELLED: "response_cancelled",
+  RESPONSE_RECEIVED: "response_received",   // hunter: a new response landed on their post
 
   // Post lifecycle
   POST_CREATED: "post_created",

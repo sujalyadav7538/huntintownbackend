@@ -5,7 +5,7 @@ import User from "../models/userSchema.js";
 import { generateAccessToken } from "../utils/generateToken.js";
 import Metric from "../models/userMetricSchema.js";
 import UserBadge from "../models/userBadgeSchema.js";
-import { updateUserMetrics } from "./userMetricController.js";
+import { updateUserMetrics } from "../service/userMetricService.js";
 import { METRIC_TYPES, ACTIONS } from "../config/constants.js";
 export const Signup = async (req, res, next) => {
   const session = await mongoose.startSession();

@@ -1,5 +1,10 @@
 import mongoose from "mongoose";
-import { MODEL_NAMES, POST_STATUS, POST_TYPE, GEO_TYPE } from "../config/constants.js";
+import {
+  MODEL_NAMES,
+  POST_STATUS,
+  POST_TYPE,
+  GEO_TYPE,
+} from "../config/constants.js";
 
 const postSchema = new mongoose.Schema(
   {
@@ -7,26 +12,39 @@ const postSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      maxlength: 100,
     },
 
     description: {
       type: String,
       required: true,
+      trim: true,
       maxlength: 300,
     },
 
+    // What the post is about
     category: {
       type: String,
       required: true,
     },
 
-    // Human readable address
-    address: {
+    // "help_needed" → user needs someone
+    // "offer_help"  → user can help someone
+    type: {
       type: String,
+      enum: Object.values(POST_TYPE),
+      default: POST_TYPE.HELP_NEEDED,
       required: true,
     },
 
-    // GeoJSON Location
+    // Human-readable location
+    address: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    // GeoJSON
     location: {
       type: {
         type: String,
@@ -40,18 +58,30 @@ const postSchema = new mongoose.Schema(
       },
     },
 
-    type: {
-      type: String,
-      enum: Object.values(POST_TYPE),
-      default: POST_TYPE.HELP_NEEDED,
-    },
-
     budget: {
       type: String,
       default: "Negotiable",
+      trim: true,
     },
 
-    timeline: String,
+    timeline: {
+      type: String,
+      default: "Flexible",
+      trim: true,
+    },
+
+    images: {
+      type: [String],
+      default: [],
+    },
+
+    // Questions shown to people responding to this post
+    questions: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
 
     status: {
       type: String,
@@ -61,7 +91,9 @@ const postSchema = new mongoose.Schema(
 
     expiryDays: {
       type: Number,
-      default: 10,
+      default: 7,
+      min: 1,
+      max: 30,
     },
 
     expiresAt: {
@@ -73,58 +105,29 @@ const postSchema = new mongoose.Schema(
       },
     },
 
-    questions: [
-      {
-        type: String,
-        trim: true,
-      },
-    ],
-
-    images: [String],
-
-    contactMethods: {
-      whatsApp: {
-        type: Boolean,
-        default: true,
-      },
-
-      phone: {
-        type: Boolean,
-        default: true,
-      },
-
-      chat: {
-        type: Boolean,
-        default: true,
-      },
-    },
-
     author: {
       type: mongoose.Schema.Types.ObjectId,
       ref: MODEL_NAMES.USER,
       required: true,
     },
 
-    applicants:{
-      type: [mongoose.Schema.Types.ObjectId],
-      ref: MODEL_NAMES.USER,
-      default: [],
-    },
+    // People who have responded to this post
+    respondents: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: MODEL_NAMES.USER,
+      },
+    ],
 
-    offersCount: {
+    responsesCount: {
       type: Number,
       default: 0,
+      min: 0,
     },
-    
   },
   {
     timestamps: true,
   },
 );
-
-// VERY IMPORTANT
-postSchema.index({
-  location: "2dsphere",
-});
 
 export default mongoose.model(MODEL_NAMES.POST, postSchema);

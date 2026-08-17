@@ -5,6 +5,7 @@ import {
   getConversationMessages,
   getPostsWithConversations,
   getConversationsByPost,
+  getMyChats,
   uploadAttachment,
   createMessage,
 } from "../controllers/chatController.js";
@@ -15,9 +16,15 @@ const router = express.Router();
 // Post-first routes — declared before /:conversationId to avoid param conflicts
 router.get("/posts", verifyToken, getPostsWithConversations);
 router.get("/posts/:postId/conversations", verifyToken, getConversationsByPost);
+router.get("/my-chats", verifyToken, getMyChats);
 router.get("/:conversationId/messages", verifyToken, getConversationMessages);
 
-router.post("/upload", verifyToken, uploadChatAttachment.single("file"), uploadAttachment);
+router.post(
+  "/upload",
+  verifyToken,
+  uploadChatAttachment.single("file"),
+  uploadAttachment,
+);
 router.post("/messages", verifyToken, createMessage);
 
 export default router;

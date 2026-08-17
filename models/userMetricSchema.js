@@ -49,12 +49,12 @@ const userMetricSchema = new mongoose.Schema(
 
     // Helper Performance
     helperMetrics: {
-      offersSubmitted: {
+      responsesSubmitted: {
         type: Number,
         default: 0,
       },
 
-      offersAccepted: {
+      responsesAccepted: {
         type: Number,
         default: 0,
       },
@@ -64,12 +64,12 @@ const userMetricSchema = new mongoose.Schema(
         default: 0,
       },
 
-      completedOffers: {
+      completedResponses: {
         type: Number,
         default: 0,
       },
 
-      cancelledOffers: {
+      cancelledResponses: {
         type: Number,
         default: 0,
       },
@@ -102,12 +102,12 @@ const userMetricSchema = new mongoose.Schema(
         default: 0,
       },
 
-      offersReceived: {
+      responsesReceived: {
         type: Number,
         default: 0,
       },
 
-      offersAccepted: {
+      responsesAccepted: {
         type: Number,
         default: 0,
       },
@@ -167,7 +167,7 @@ const userMetricSchema = new mongoose.Schema(
         default: 0,
       },
 
-      offersSubmitted: {
+      responsesSubmitted: {
         type: Number,
         default: 0,
       },
@@ -182,6 +182,8 @@ const userMetricSchema = new mongoose.Schema(
         default: null,
       },
     },
+
+    
     verificationMetrics: {},
 
     penaltyMetrics: {},

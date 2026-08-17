@@ -37,7 +37,7 @@ export const BADGE_RULES = [
     level: BADGE_LEVELS.SILVER,
     persistent: false,
     condition: (metric) =>
-      metric.helperMetrics.completedOffers >= 25 &&
+      metric.helperMetrics.completedResponses >= 25 &&
       metric.helperMetrics.completionScore >= 95,
   },
 
@@ -45,7 +45,7 @@ export const BADGE_RULES = [
     id: "POPULAR_HELPER",
     name: "Popular Helper",
     condition: (metric) =>
-      metric.helperMetrics.offersAccepted >= 50 &&
+      metric.helperMetrics.responsesAccepted >= 50 &&
       metric.helperMetrics.acceptanceScore >= 70,
   },
 

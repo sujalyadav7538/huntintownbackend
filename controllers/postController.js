@@ -1,14 +1,25 @@
 import mongoose from "mongoose";
 import Post from "../models/postSchema.js";
-import Offer from "../models/offerSchema.js";
+import Response from "../models/responseSchema.js";
 import { geoCode } from "../utils/geoCode.js";
-import { updateUserMetrics } from "./userMetricController.js";
+import { updateUserMetrics } from "../service/userMetricService.js";
 import {
   METRIC_TYPES,
   ACTIONS,
   GEO_TYPE,
   POST_STATUS,
+  MODEL_NAMES,
 } from "../config/constants.js";
+import User from "../models/userSchema.js";
+import { calculateRecommendationScore } from "../service/recommendationService.js";
+import Metric from "../models/userMetricSchema.js";
+import {
+  createRecommendationPool,
+  getRecommendationPool,
+  removeRecommendationPool,
+} from "../service/recommendationPoolService.js";
+
+const PAGE_SIZE = 20;
 
 export const createPost = async (req, res, next) => {
   try {
@@ -112,15 +123,24 @@ export const createPost = async (req, res, next) => {
 
 export const getAllPosts = async (req, res, next) => {
   try {
-    const posts = await Post.find()
-      .populate("author", "name avatar rating location")
-      .sort({
-        createdAt: -1,
-      });
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 12);
+    const skip = (page - 1) * limit;
+
+    const [posts, total] = await Promise.all([
+      Post.find()
+        .populate("author", "name avatar rating location")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Post.countDocuments(),
+    ]);
 
     return res.status(200).json({
       success: true,
       count: posts.length,
+      page,
+      hasMore: skip + posts.length < total,
       posts,
     });
   } catch (error) {
@@ -283,7 +303,7 @@ export const deletePost = async (req, res, next) => {
       });
     }
 
-    await Offer.deleteMany(
+    await Response.deleteMany(
       {
         postId: post._id,
       },
@@ -304,42 +324,6 @@ export const deletePost = async (req, res, next) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    next(error);
-  }
-};
-
-export const getAvailablePosts = async (req, res, next) => {
-  try {
-    const userId = req.user._id;
-
-    const appliedOffers = await Offer.find({
-      offeredBy: userId,
-    }).select("postId");
-
-    const appliedPostIds = appliedOffers.map((offer) => offer.postId);
-
-    const posts = await Post.find({
-      author: {
-        $ne: userId,
-      },
-      _id: {
-        $nin: appliedPostIds,
-      },
-      status: {
-        $in: [POST_STATUS.LIVE, POST_STATUS.IN_PROGRESS],
-      },
-    })
-      .populate("author", "name avatar rating location")
-      .sort({
-        createdAt: -1,
-      });
-
-    return res.status(200).json({
-      success: true,
-      count: posts.length,
-      posts,
-    });
-  } catch (error) {
     next(error);
   }
 };
@@ -411,6 +395,117 @@ export const markPostCompleted = async (req, res, next) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
+    next(error);
+  }
+};
+
+export const getAvailablePosts = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+
+    const user = await User.findById(userId).select("location skills").lean();
+
+    const refresh = req.query.refresh === "true";
+
+    let pool = getRecommendationPool(userId);
+
+    console.log(`Recommendation pool for user ${userId}:`,refresh);
+    // ----------------------------------------
+    // 1. Explicit refresh from frontend
+    // ----------------------------------------
+    if (refresh) {
+      removeRecommendationPool(userId);
+
+      pool = await createRecommendationPool({
+        user,
+      });
+    }
+
+    // ----------------------------------------
+    // 2. No pool → create initial pool
+    // ----------------------------------------
+    if (!pool) {
+      pool = await createRecommendationPool({
+        user,
+      });
+    }
+
+    // ----------------------------------------
+    // 3. Pool exhausted → refill
+    // ----------------------------------------
+    if (pool && pool.position >= pool.posts.length) {
+      removeRecommendationPool(userId);
+
+      pool = await createRecommendationPool({
+        user,
+      });
+    }
+
+    // Remove expired posts from cached pool before serving results.
+    if (pool?.posts?.length) {
+      const now = Date.now();
+
+      pool.posts = pool.posts.filter((item) => {
+        const expiresAt = item?.post?.expiresAt;
+
+        if (!expiresAt) return true;
+
+        const ts = new Date(expiresAt).getTime();
+        return Number.isFinite(ts) && ts > now;
+      });
+
+      if (pool.position > pool.posts.length) {
+        pool.position = pool.posts.length;
+      }
+    }
+
+    // If pruning exhausted the pool, rebuild once.
+    if (pool && pool.position >= pool.posts.length) {
+      removeRecommendationPool(userId);
+
+      pool = await createRecommendationPool({
+        user,
+      });
+    }
+
+    // ----------------------------------------
+    // 4. Still no posts available
+    // ----------------------------------------
+    if (!pool || pool.posts.length === 0) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        hasMore: false,
+        posts: [],
+      });
+    }
+
+    // ----------------------------------------
+    // 5. Get next page from pool
+    // ----------------------------------------
+    const start = pool.position;
+    const end = Math.min(start + PAGE_SIZE, pool.posts.length);
+
+    const results = pool.posts.slice(start, end);
+
+    pool.position = end;
+
+    // ----------------------------------------
+    // 6. There may still be posts in pool
+    // ----------------------------------------
+    const hasMore = pool.position < pool.posts.length;
+
+    return res.status(200).json({
+      success: true,
+      count: results.length,
+      hasMore,
+      posts: results.map((item) => ({
+        ...item.post,
+        recommendationScore: item.score,
+        recommendationBreakdown: item.breakdown,
+      })),
+    });
+  } catch (error) {
     next(error);
   }
 };

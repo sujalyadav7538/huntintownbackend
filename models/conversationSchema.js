@@ -9,9 +9,9 @@ const conversationSchema = new mongoose.Schema(
       required: true,
     },
 
-    offerId: {
+    responseId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: MODEL_NAMES.OFFER,
+      ref: MODEL_NAMES.RESPONSE,
       required: true,
       unique: true,
     },

@@ -1,8 +1,8 @@
 import mongoose from "mongoose";
 import Rating from "../models/ratingSchema.js";
 import Post from "../models/postSchema.js";
-import Offer from "../models/offerSchema.js";
-import { updateUserMetrics } from "./userMetricController.js";
+import Response from "../models/responseSchema.js";
+import { updateUserMetrics } from "../service/userMetricService.js";
 import { METRIC_TYPES, ACTIONS } from "../config/constants.js";
 
 export const rateUser = async (req, res) => {
@@ -147,9 +147,9 @@ export const reviewOwner = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Post is not yet completed" });
     }
 
-    const acceptedOffer = await Offer.findOne({ postId, offeredBy: helperId, status: "accepted" });
-    if (!acceptedOffer) {
-      return res.status(403).json({ success: false, message: "Your offer was not accepted for this post" });
+    const acceptedResponse = await Response.findOne({ postId, respondedBy: helperId, status: "accepted" });
+    if (!acceptedResponse) {
+      return res.status(403).json({ success: false, message: "Your response was not accepted for this post" });
     }
 
     const existing = await Rating.findOne({ postId, hunter: post.author, helper: helperId, direction: "helper_to_hunter" });

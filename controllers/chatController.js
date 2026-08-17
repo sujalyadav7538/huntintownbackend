@@ -1,8 +1,9 @@
 import Conversation from "../models/conversationSchema.js";
 import Message from "../models/messageSchema.js";
 import User from "../models/userSchema.js";
+import mongoose from "mongoose";
 import cloudinary from "../utils/cloudinary.js";
-import { updateUserMetrics } from "./userMetricController.js";
+import { updateUserMetrics } from "../service/userMetricService.js";
 import { METRIC_TYPES } from "../config/constants.js";
 import {
   inferMessageType,
@@ -11,7 +12,7 @@ import {
 } from "../utils/chatUtils.js";
 
 /**
- * GET /api/chat/posts
+ * POST /api/chat/posts
  * Returns the unique posts that have conversations for the current user,
  * aggregated with conversationCount and latest activity time.
  */
@@ -19,7 +20,7 @@ export const getPostsWithConversations = async (req, res, next) => {
   try {
     const userId = req.user._id;
 
-    const conversations = await Conversation.find({ participants: userId })
+    const conversations = await Conversation.find({ hunter: userId })
       .populate("post", "title category budget address status")
       .sort({ updatedAt: -1 })
       .lean();
@@ -57,7 +58,7 @@ export const getPostsWithConversations = async (req, res, next) => {
 };
 
 /**
- * GET /api/chat/posts/:postId/conversations
+ * POST /api/chat/posts/:postId/conversations
  * Returns all conversations the current user has for a specific post.
  */
 export const getConversationsByPost = async (req, res, next) => {
@@ -65,14 +66,21 @@ export const getConversationsByPost = async (req, res, next) => {
     const userId = req.user._id;
     const { postId } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid post id",
+      });
+    }
+
     const conversations = await Conversation.find({
-      participants: userId,
+      hunter: userId,
       post: postId,
     })
       .populate("post", "title category budget address status")
       .populate(
         "participants",
-        "id name avatar role rating location address isOnline lastSeen",
+        "_id name avatar role rating location address isOnline lastSeen",
       )
       .sort({ updatedAt: -1 });
 
@@ -80,6 +88,89 @@ export const getConversationsByPost = async (req, res, next) => {
       success: true,
       count: conversations.length,
       data: conversations,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/chat/my-chats
+ * Returns conversations where current user is the helper/participant,
+ * with post summary, other participant, and unread count.
+ */
+export const getMyChats = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+
+    const conversations = await Conversation.find({ helper: userId })
+      .populate("post", "title category budget address status")
+      .populate(
+        "participants",
+        "id name avatar role rating location address isOnline lastSeen",
+      )
+      .sort({ lastMessageAt: -1, updatedAt: -1 })
+      .lean();
+
+    const conversationIds = conversations.map(
+      (conversation) => conversation._id,
+    );
+    const unreadMap = new Map();
+
+    if (conversationIds.length) {
+      const unreadCounts = await Message.aggregate([
+        {
+          $match: {
+            conversationId: { $in: conversationIds },
+            sender: { $ne: new mongoose.Types.ObjectId(userId) },
+            isRead: false,
+          },
+        },
+        {
+          $group: {
+            _id: "$conversationId",
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+
+      unreadCounts.forEach((entry) => {
+        unreadMap.set(String(entry._id), entry.count);
+      });
+    }
+
+    const uniqueByPost = new Map();
+
+    conversations.forEach((conversation) => {
+      const key = conversation.post?._id
+        ? String(conversation.post._id)
+        : String(conversation._id);
+
+      // Conversations are already sorted by latest activity, so keep first one.
+      if (!uniqueByPost.has(key)) {
+        uniqueByPost.set(key, conversation);
+      }
+    });
+
+    const data = Array.from(uniqueByPost.values()).map((conversation) => {
+      const otherUser =
+        conversation.participants.find(
+          (participant) => String(participant._id) !== String(userId),
+        ) ??
+        conversation.participants[0] ??
+        null;
+
+      return {
+        ...conversation,
+        postId: conversation.post?._id ?? null,
+        otherUser,
+        unreadCount: unreadMap.get(String(conversation._id)) ?? 0,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      data,
     });
   } catch (error) {
     next(error);

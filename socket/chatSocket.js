@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import Conversation from "../models/conversationSchema.js";
 import User from "../models/userSchema.js";
 import { persistChatMessage, populateAndNormalize } from "../utils/chatUtils.js";
-import { updateUserMetrics } from "../controllers/userMetricController.js";
+import { updateUserMetrics } from "../service/userMetricService.js";
 import { METRIC_TYPES } from "../config/constants.js";
 
 export default function registerChatSocket(io, socket) {

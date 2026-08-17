@@ -264,20 +264,20 @@ export const updateHelperMetric = async (userId, action, session = null) => {
   );
 
   switch (action) {
-    case ACTIONS.OFFER_SUBMITTED:
-      metric.helperMetrics.offersSubmitted++;
+    case ACTIONS.RESPONSE_SUBMITTED:
+      metric.helperMetrics.responsesSubmitted++;
       break;
 
-    case ACTIONS.OFFER_ACCEPTED:
-      metric.helperMetrics.offersAccepted++;
+    case ACTIONS.RESPONSE_ACCEPTED:
+      metric.helperMetrics.responsesAccepted++;
       break;
 
-    case ACTIONS.OFFER_COMPLETED:
-      metric.helperMetrics.completedOffers++;
+    case ACTIONS.RESPONSE_COMPLETED:
+      metric.helperMetrics.completedResponses++;
       break;
 
-    case ACTIONS.OFFER_CANCELLED:
-      metric.helperMetrics.cancelledOffers++;
+    case ACTIONS.RESPONSE_CANCELLED:
+      metric.helperMetrics.cancelledResponses++;
       break;
 
     default:
@@ -286,24 +286,24 @@ export const updateHelperMetric = async (userId, action, session = null) => {
 
   // Acceptance Score
   metric.helperMetrics.acceptanceScore =
-    metric.helperMetrics.offersSubmitted === 0
+    metric.helperMetrics.responsesSubmitted === 0
       ? 0
       : Number(
           (
-            (metric.helperMetrics.offersAccepted /
-              metric.helperMetrics.offersSubmitted) *
+            (metric.helperMetrics.responsesAccepted /
+              metric.helperMetrics.responsesSubmitted) *
             100
           ).toFixed(2),
         );
 
   // Completion Score
   metric.helperMetrics.completionScore =
-    metric.helperMetrics.offersAccepted === 0
+    metric.helperMetrics.responsesAccepted === 0
       ? 0
       : Number(
           (
-            (metric.helperMetrics.completedOffers /
-              metric.helperMetrics.offersAccepted) *
+            (metric.helperMetrics.completedResponses /
+              metric.helperMetrics.responsesAccepted) *
             100
           ).toFixed(2),
         );
@@ -326,12 +326,12 @@ export const updateHunterMetric = async (userId, action, session = null) => {
       metric.hunterMetrics.postsCreated++;
       break;
 
-    case ACTIONS.OFFER_RECEIVED:
-      metric.hunterMetrics.offersReceived++;
+    case ACTIONS.RESPONSE_RECEIVED:
+      metric.hunterMetrics.responsesReceived++;
       break;
 
-    case ACTIONS.OFFER_ACCEPTED:
-      metric.hunterMetrics.offersAccepted++;
+    case ACTIONS.RESPONSE_ACCEPTED:
+      metric.hunterMetrics.responsesAccepted++;
       break;
 
     case ACTIONS.POST_COMPLETED:
@@ -348,12 +348,12 @@ export const updateHunterMetric = async (userId, action, session = null) => {
 
   // Acceptance Score
   metric.hunterMetrics.acceptanceScore =
-    metric.hunterMetrics.offersReceived === 0
+    metric.hunterMetrics.responsesReceived === 0
       ? 0
       : Number(
           (
-            (metric.hunterMetrics.offersAccepted /
-              metric.hunterMetrics.offersReceived) *
+            (metric.hunterMetrics.responsesAccepted /
+              metric.hunterMetrics.responsesReceived) *
             100
           ).toFixed(2),
         );
@@ -600,8 +600,8 @@ export const updateActivityMetric = async (userId, action, session = null) => {
       activity.postsCreated++;
       break;
 
-    case ACTIONS.OFFER_SUBMITTED:
-      activity.offersSubmitted++;
+    case ACTIONS.RESPONSE_SUBMITTED:
+      activity.responsesSubmitted++;
       break;
 
     case ACTIONS.CONVERSATION_STARTED:
@@ -609,9 +609,9 @@ export const updateActivityMetric = async (userId, action, session = null) => {
       break;
 
     case ACTIONS.LOGIN:
-    case ACTIONS.OFFER_ACCEPTED:
-    case ACTIONS.OFFER_COMPLETED:
-    case ACTIONS.OFFER_CANCELLED:
+    case ACTIONS.RESPONSE_ACCEPTED:
+    case ACTIONS.RESPONSE_COMPLETED:
+    case ACTIONS.RESPONSE_CANCELLED:
     case ACTIONS.POST_COMPLETED:
     case ACTIONS.POST_CANCELLED:
     case ACTIONS.MESSAGE_SENT:

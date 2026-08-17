@@ -1,6 +1,9 @@
 import User from "../models/userSchema.js";
 import cloudinary from "../utils/cloudinary.js";
-import { updateUserMetrics, getBadgeMetadata } from "./userMetricController.js";
+import {
+  updateUserMetrics,
+  getBadgeMetadata,
+} from "../service/userMetricService.js";
 import { METRIC_TYPES, GEO_TYPE } from "../config/constants.js";
 import Metric from "../models/userMetricSchema.js";
 import UserBadge from "../models/userBadgeSchema.js";

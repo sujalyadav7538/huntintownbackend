@@ -1,21 +1,22 @@
 import mongoose from "mongoose";
 
 import Conversation from "../models/conversationSchema.js";
-import Offer from "../models/offerSchema.js";
+import Response from "../models/responseSchema.js";
 import Post from "../models/postSchema.js";
-import User from "../models/userSchema.js";
+import Metric from "../models/userMetricSchema.js";
 import { updateUserMetrics } from "../service/userMetricService.js";
 import {
   METRIC_TYPES,
   ACTIONS,
   POST_STATUS,
-  OFFER_STATUS,
+  RESPONSE_STATUS,
   CONVERSATION_STATUS,
 } from "../config/constants.js";
 
-export const createOffer = async (req, res, next) => {
+export const createResponse = async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
+
   try {
     const { postId, message, answers } = req.body;
     const userId = req.user._id;
@@ -23,6 +24,7 @@ export const createOffer = async (req, res, next) => {
     if (!mongoose.Types.ObjectId.isValid(postId)) {
       await session.abortTransaction();
       session.endSession();
+
       return res.status(400).json({
         success: false,
         message: "Invalid post id",
@@ -34,18 +36,20 @@ export const createOffer = async (req, res, next) => {
     if (!post) {
       await session.abortTransaction();
       session.endSession();
+
       return res.status(404).json({
         success: false,
         message: "Post not found",
       });
     }
 
-    if (post.author.toString() === userId) {
+    if (post.author.toString() === userId.toString()) {
       await session.abortTransaction();
       session.endSession();
+
       return res.status(400).json({
         success: false,
-        message: "You cannot offer help on your own post",
+        message: "You cannot respond to your own post",
       });
     }
 
@@ -55,13 +59,14 @@ export const createOffer = async (req, res, next) => {
 
       return res.status(400).json({
         success: false,
-        message: "Post is not accepting offers",
+        message: "Post is not accepting responses",
       });
     }
 
     if (post.expiresAt && post.expiresAt < new Date()) {
       await session.abortTransaction();
       session.endSession();
+
       return res.status(400).json({
         success: false,
         message: "Post has expired",
@@ -71,31 +76,33 @@ export const createOffer = async (req, res, next) => {
     if (answers && !Array.isArray(answers)) {
       await session.abortTransaction();
       session.endSession();
+
       return res.status(400).json({
         success: false,
         message: "Answers must be an array",
       });
     }
 
-    const existingOffer = await Offer.findOne({
+    const existingResponse = await Response.findOne({
       postId,
-      offeredBy: userId,
+      respondedBy: userId,
     }).session(session);
 
-    if (existingOffer) {
+    if (existingResponse) {
       await session.abortTransaction();
       session.endSession();
+
       return res.status(400).json({
         success: false,
-        message: "You have already submitted an offer.",
+        message: "You have already submitted a response.",
       });
     }
 
-    const [offer] = await Offer.create(
+    const [response] = await Response.create(
       [
         {
           postId,
-          offeredBy: userId,
+          respondedBy: userId,
           message: message?.trim() || "",
           answers: answers || [],
         },
@@ -103,46 +110,56 @@ export const createOffer = async (req, res, next) => {
       { session },
     );
 
-    post.offersCount += 1;
+    post.responsesCount += 1;
     await post.save({ session });
 
-    // Helper: submitted an offer
+    // Helper: submitted a response
     await updateUserMetrics(
-      req.user._id,
+      userId,
       [
-        { type: METRIC_TYPES.HELPER, action: ACTIONS.OFFER_SUBMITTED },
+        {
+          type: METRIC_TYPES.HELPER,
+          action: ACTIONS.RESPONSE_SUBMITTED,
+        },
         {
           type: METRIC_TYPES.ACTIVITY,
-          action: ACTIONS.OFFER_SUBMITTED,
+          action: ACTIONS.RESPONSE_SUBMITTED,
         },
       ],
       session,
     );
-    // Hunter: received a new offer on their post
+
+    // Hunter: received a new response
     await updateUserMetrics(
       post.author,
-      [{ type: METRIC_TYPES.HUNTER, action: ACTIONS.OFFER_RECEIVED }],
+      [
+        {
+          type: METRIC_TYPES.HUNTER,
+          action: ACTIONS.RESPONSE_RECEIVED,
+        },
+      ],
       session,
     );
 
     await session.commitTransaction();
     session.endSession();
 
-    await offer.populate("offeredBy", "name avatar");
+    await response.populate("respondedBy", "name avatar");
 
     return res.status(201).json({
       success: true,
-      message: "Offer submitted successfully.",
-      offer,
+      message: "Response submitted successfully.",
+      response,
     });
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
+
     next(err);
   }
 };
 
-export const getOffersByPost = async (req, res, next) => {
+export const getResponsesByPost = async (req, res, next) => {
   try {
     const { postId } = req.params;
     const userId = req.user._id;
@@ -170,102 +187,93 @@ export const getOffersByPost = async (req, res, next) => {
       });
     }
 
-    // 1. Fetch offers
-    const offers = await Offer.find({ postId })
-      .populate("offeredBy", "name avatar rating location")
+    // 1. Fetch responses
+    const responses = await Response.find({ postId })
+      .populate("respondedBy", "name avatar rating location")
       .sort({ createdAt: -1 })
       .lean();
 
-    if (!offers.length) {
+    if (!responses.length) {
       return res.status(200).json({
         success: true,
         count: 0,
-        offers: [],
+        responses: [],
       });
     }
 
-    // 2. Collect offer owner's IDs
-    const userIds = offers.map((offer) => offer.offeredBy?._id).filter(Boolean);
+    // 2. Collect responder IDs
+    const userIds = responses.map((r) => r.respondedBy?._id).filter(Boolean);
 
     // 3. Fetch all metrics in ONE query
     const metrics = await Metric.find({
-      user: { $in: userIds },
+      userId: { $in: userIds },
     })
-      .select("user trustScore")
+      .select("userId trustScore")
       .lean();
 
     // 4. Create quick lookup
     const metricMap = new Map(
-      metrics.map((metric) => [metric.user.toString(), metric.trustScore ?? 0]),
+      metrics.map((m) => [m.userId.toString(), m.trustScore ?? 0]),
     );
 
     // 5. Attach trust score
-    const scoredOffers = offers.map((offer) => {
-      const trustScore = metricMap.get(offer.offeredBy?._id?.toString()) ?? 0;
+    const scoredResponses = responses.map((r) => ({
+      ...r,
+      trustScore: metricMap.get(r.respondedBy?._id?.toString()) ?? 0,
+    }));
 
-      return {
-        ...offer,
-        trustScore,
-      };
-    });
-
-    // 6. Sort by trust score
-    scoredOffers.sort((a, b) => {
-      // Higher trust first
-      if (b.trustScore !== a.trustScore) {
-        return b.trustScore - a.trustScore;
-      }
-
-      // If trust is equal, newer offer first
+    // 6. Sort by trust score, then by newest
+    scoredResponses.sort((a, b) => {
+      if (b.trustScore !== a.trustScore) return b.trustScore - a.trustScore;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
     return res.status(200).json({
       success: true,
-      count: scoredOffers.length,
-      offers: scoredOffers,
+      count: scoredResponses.length,
+      responses: scoredResponses,
     });
   } catch (err) {
     next(err);
   }
 };
 
-export const acceptOffer = async (req, res, next) => {
+export const acceptResponse = async (req, res, next) => {
   const session = await mongoose.startSession();
 
   try {
     session.startTransaction();
 
-    const { offerId } = req.params;
+    const { responseId } = req.params;
     const userId = req.user._id;
 
-    if (!mongoose.Types.ObjectId.isValid(offerId)) {
+    if (!mongoose.Types.ObjectId.isValid(responseId)) {
       await session.abortTransaction();
       return res.status(400).json({
         success: false,
-        message: "Invalid offer id",
+        message: "Invalid response id",
       });
     }
 
-    const offer = await Offer.findById(offerId).session(session);
+    const response = await Response.findById(responseId).session(session);
 
-    if (!offer) {
+    if (!response) {
       await session.abortTransaction();
       return res.status(404).json({
         success: false,
-        message: "Offer not found",
+        message: "Response not found",
       });
     }
 
-    if (offer.status === OFFER_STATUS.ACCEPTED) {
+    if (response.status === RESPONSE_STATUS.ACCEPTED) {
       await session.abortTransaction();
       return res.status(400).json({
         success: false,
-        message: "Offer already accepted",
+        message: "Response already accepted",
       });
     }
 
-    const post = await Post.findById(offer.postId).session(session);
+    const post = await Post.findById(response.postId).session(session);
 
     if (!post) {
       await session.abortTransaction();
@@ -274,8 +282,7 @@ export const acceptOffer = async (req, res, next) => {
         message: "Post not found",
       });
     }
-    console.log("post.author.toString():", post.author.toString());
-    console.log("userId:", userId.toString());
+
     if (post.author.toString() !== userId) {
       await session.abortTransaction();
       return res.status(403).json({
@@ -288,34 +295,32 @@ export const acceptOffer = async (req, res, next) => {
       await session.abortTransaction();
       return res.status(400).json({
         success: false,
-        message: "Post is no longer accepting offers",
+        message: "Post is no longer accepting responses",
       });
     }
 
-    offer.status = OFFER_STATUS.ACCEPTED;
-    await offer.save({ session });
+    response.status = RESPONSE_STATUS.ACCEPTED;
+    await response.save({ session });
 
     post.status = POST_STATUS.IN_PROGRESS;
     await post.save({ session });
 
-    await Offer.updateMany(
+    await Response.updateMany(
       {
         postId: post._id,
-        _id: { $ne: offer._id },
-        status: OFFER_STATUS.PENDING,
+        _id: { $ne: response._id },
+        status: RESPONSE_STATUS.PENDING,
       },
       {
         $set: {
-          status: OFFER_STATUS.REJECTED,
+          status: RESPONSE_STATUS.REJECTED,
         },
       },
-      {
-        session,
-      },
+      { session },
     );
 
     let conversation = await Conversation.findOne({
-      offerId: offer._id,
+      responseId: response._id,
     }).session(session);
 
     if (!conversation) {
@@ -324,10 +329,10 @@ export const acceptOffer = async (req, res, next) => {
           [
             {
               post: post._id,
-              offerId: offer._id,
+              responseId: response._id,
               hunter: post.author,
-              helper: offer.offeredBy,
-              participants: [post.author, offer.offeredBy],
+              helper: response.respondedBy,
+              participants: [post.author, response.respondedBy],
               status: CONVERSATION_STATUS.ACTIVE,
               responseTracking: {
                 acceptedAt: new Date(),
@@ -341,24 +346,24 @@ export const acceptOffer = async (req, res, next) => {
       )[0];
     }
 
-    const applicants = post?.applicants;
-    post.applicants = [...applicants, offer.offeredBy];
+    const applicants = post?.applicants ?? [];
+    post.applicants = [...applicants, response.respondedBy];
     await post.save({ session });
 
-    // Helper: their offer was accepted
+    // Helper: their response was accepted
     await updateUserMetrics(
-      offer.offeredBy,
-      [{ type: METRIC_TYPES.HELPER, action: ACTIONS.OFFER_ACCEPTED }],
+      response.respondedBy,
+      [{ type: METRIC_TYPES.HELPER, action: ACTIONS.RESPONSE_ACCEPTED }],
       session,
     );
-    // Hunter: accepted an offer
+    // Hunter: accepted a response
     await updateUserMetrics(
       req.user._id,
       [
-        { type: METRIC_TYPES.HUNTER, action: ACTIONS.OFFER_ACCEPTED },
+        { type: METRIC_TYPES.HUNTER, action: ACTIONS.RESPONSE_ACCEPTED },
         {
           type: METRIC_TYPES.ACTIVITY,
-          action: ACTIONS.OFFER_ACCEPTED,
+          action: ACTIONS.RESPONSE_ACCEPTED,
         },
         {
           type: METRIC_TYPES.ACTIVITY,
@@ -384,8 +389,8 @@ export const acceptOffer = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      message: "Offer accepted successfully",
-      offer,
+      message: "Response accepted successfully",
+      response,
       conversation,
     });
   } catch (error) {
@@ -395,34 +400,34 @@ export const acceptOffer = async (req, res, next) => {
   }
 };
 
-export const rejectOffer = async (req, res, next) => {
+export const rejectResponse = async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const { offerId } = req.params;
+    const { responseId } = req.params;
     const userId = req.user._id;
 
-    if (!mongoose.Types.ObjectId.isValid(offerId)) {
+    if (!mongoose.Types.ObjectId.isValid(responseId)) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
         success: false,
-        message: "Invalid offer id",
+        message: "Invalid response id",
       });
     }
 
-    const offer = await Offer.findById(offerId).session(session);
+    const response = await Response.findById(responseId).session(session);
 
-    if (!offer) {
+    if (!response) {
       await session.abortTransaction();
       session.endSession();
       return res.status(404).json({
         success: false,
-        message: "Offer not found",
+        message: "Response not found",
       });
     }
 
-    const post = await Post.findById(offer.postId).session(session);
+    const post = await Post.findById(response.postId).session(session);
 
     if (!post) {
       await session.abortTransaction();
@@ -442,33 +447,32 @@ export const rejectOffer = async (req, res, next) => {
       });
     }
 
-    if (offer.status === OFFER_STATUS.ACCEPTED) {
+    if (response.status === RESPONSE_STATUS.ACCEPTED) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
         success: false,
-        message: "Accepted offer cannot be rejected",
+        message: "Accepted response cannot be rejected",
       });
     }
 
-    if (offer.status === OFFER_STATUS.REJECTED) {
+    if (response.status === RESPONSE_STATUS.REJECTED) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
         success: false,
-        message: "Offer already rejected",
+        message: "Response already rejected",
       });
     }
 
-    offer.status = OFFER_STATUS.REJECTED;
-    await offer.save({ session });
+    response.status = RESPONSE_STATUS.REJECTED;
+    await response.save({ session });
 
-    // Update the user metric for the helper and hunter
     await updateUserMetrics(
-      offer.offeredBy,
+      response.respondedBy,
       [
-        { type: METRIC_TYPES.HELPER, action: ACTIONS.OFFER_CANCELLED },
-        { type: METRIC_TYPES.HUNTER, action: ACTIONS.OFFER_CANCELLED },
+        { type: METRIC_TYPES.HELPER, action: ACTIONS.RESPONSE_CANCELLED },
+        { type: METRIC_TYPES.HUNTER, action: ACTIONS.RESPONSE_CANCELLED },
       ],
       session,
     );
@@ -478,8 +482,8 @@ export const rejectOffer = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      message: "Offer rejected successfully",
-      offer,
+      message: "Response rejected successfully",
+      response,
     });
   } catch (error) {
     await session.abortTransaction();
@@ -492,8 +496,8 @@ export const getMyActivity = async (req, res, next) => {
   try {
     const userId = req.user._id;
 
-    const offers = await Offer.find({
-      offeredBy: userId,
+    const responses = await Response.find({
+      respondedBy: userId,
     })
       .populate({
         path: "postId",
@@ -502,29 +506,23 @@ export const getMyActivity = async (req, res, next) => {
           select: "name avatar rating location",
         },
       })
-      .sort({
-        createdAt: -1,
-      });
+      .sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,
-      count: offers.length,
-      data: offers,
+      count: responses.length,
+      data: responses,
     });
   } catch (error) {
     next(error);
   }
 };
 
-export const getMyResponses = async (req, res, next) => {
+export const getResponsesForMyPosts = async (req, res, next) => {
   try {
     const userId = req.user._id;
 
-    const posts = await Post.find({
-      author: userId,
-    }).sort({
-      createdAt: -1,
-    });
+    const posts = await Post.find({ author: userId }).sort({ createdAt: -1 });
 
     if (!posts.length) {
       return res.status(200).json({
@@ -536,37 +534,158 @@ export const getMyResponses = async (req, res, next) => {
 
     const postIds = posts.map((p) => p._id);
 
-    const offers = await Offer.find({
-      postId: {
-        $in: postIds,
-      },
+    const responses = await Response.find({
+      postId: { $in: postIds },
     })
-      .populate("offeredBy", "name avatar rating location")
-      .sort({
-        createdAt: -1,
-      });
+      .populate("respondedBy", "name avatar rating location")
+      .sort({ createdAt: -1 });
 
-    const offersMap = new Map();
+    const responsesMap = new Map();
 
-    for (const offer of offers) {
-      const key = offer.postId.toString();
-
-      if (!offersMap.has(key)) {
-        offersMap.set(key, []);
-      }
-
-      offersMap.get(key).push(offer);
+    for (const r of responses) {
+      const key = r.postId.toString();
+      if (!responsesMap.has(key)) responsesMap.set(key, []);
+      responsesMap.get(key).push(r);
     }
 
-    const response = posts.map((post) => ({
+    const data = posts.map((post) => ({
       post,
-      offers: offersMap.get(post._id.toString()) || [],
-    }));
+      responses: responsesMap.get(post._id.toString()) || [],
+    })).filter((item) => item.responses.length > 0);
 
     return res.status(200).json({
       success: true,
-      count: response.length,
-      data: response,
+      count: data.length,
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAllResponses = async (req, res, next) => {
+  try {
+    const { postId } = req.params;
+    const { sort = "trustScore" } = req.query;
+
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid post id",
+      });
+    }
+
+    const postExists = await Post.exists({ _id: postId });
+
+    if (!postExists) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    const sortOptions = {
+      trustScore: { trustScore: -1, createdAt: -1 },
+      earliest: { createdAt: 1 },
+      latest: { createdAt: -1 },
+    };
+
+    const selectedSort = sortOptions[sort] ?? sortOptions.trustScore;
+
+    const responses = await Response.aggregate([
+      {
+        $match: {
+          postId: new mongoose.Types.ObjectId(postId),
+        },
+      },
+
+      // Get responder
+      {
+        $lookup: {
+          from: "users",
+          localField: "respondedBy",
+          foreignField: "_id",
+          as: "respondedBy",
+        },
+      },
+
+      {
+        $unwind: {
+          path: "$respondedBy",
+          preserveNullAndEmptyArrays: false,
+        },
+      },
+
+      // Get metric
+      {
+        $lookup: {
+          from: "metrics",
+          localField: "respondedBy._id",
+          foreignField: "userId",
+          as: "metric",
+        },
+      },
+
+      {
+        $unwind: {
+          path: "$metric",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // Extract required metrics
+      {
+        $set: {
+          trustScore: {
+            $ifNull: ["$metric.trustScore", 0],
+          },
+
+          averageRating: {
+            $ifNull: ["$metric.reviewMetrics.averageRating", 0],
+          },
+        },
+      },
+
+      // Sort
+      {
+        $sort: selectedSort,
+      },
+
+      // Only top 50
+      {
+        $limit: 50,
+      },
+
+      // Return only what frontend needs
+      {
+        $project: {
+          _id: 1,
+          postId: 1,
+          message: 1,
+          answers: 1,
+          status: 1,
+          acceptedAt: 1,
+          completedAt: 1,
+          cancelledAt: 1,
+          createdAt: 1,
+          updatedAt: 1,
+
+          trustScore: 1,
+          averageRating: 1,
+
+          "respondedBy._id": 1,
+          "respondedBy.name": 1,
+          "respondedBy.avatar": 1,
+          "respondedBy.role": 1,
+        },
+      },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      count: responses.length,
+      sort,
+      responses,
     });
   } catch (error) {
     next(error);
