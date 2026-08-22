@@ -848,7 +848,7 @@ async function seed() {
       user = await User.create({
         id: uuidv4(),
         email,
-        password: hashed,
+        passwordHash: hashed,
         name: email.split("@")[0],
         bio: "Auto-generated seed account",
         location: {
@@ -870,7 +870,7 @@ async function seed() {
       user = await User.create({
         id: uuidv4(),
         email,
-        password: hashed,
+        passwordHash: hashed,
         name: email.split("@")[0],
         bio: "Auto-generated response seed account",
         location: {
