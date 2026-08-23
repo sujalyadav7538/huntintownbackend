@@ -5,7 +5,7 @@ import {
   acceptResponse,
   rejectResponse,
   getMyActivity,
-  getResponsesForMyPosts,
+  getMyPosts,
   getAllResponses,
 } from "../controllers/responseController.js";
 
@@ -32,6 +32,6 @@ router.patch("/:responseId/reject", verifyToken, rejectResponse);
 router.get("/my-activity", verifyToken, getMyActivity);
 
 // Get responses received on posts authored by current user
-router.get("/received", verifyToken, getResponsesForMyPosts);
+router.get("/received", verifyToken, getMyPosts);
 
 export default router;

@@ -28,15 +28,6 @@ const postSchema = new mongoose.Schema(
       required: true,
     },
 
-    // "help_needed" → user needs someone
-    // "offer_help"  → user can help someone
-    type: {
-      type: String,
-      enum: Object.values(POST_TYPE),
-      default: POST_TYPE.HELP_NEEDED,
-      required: true,
-    },
-
     // Human-readable location
     address: {
       type: String,
@@ -110,14 +101,6 @@ const postSchema = new mongoose.Schema(
       ref: MODEL_NAMES.USER,
       required: true,
     },
-
-    // People who have responded to this post
-    respondents: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: MODEL_NAMES.USER,
-      },
-    ],
 
     responsesCount: {
       type: Number,

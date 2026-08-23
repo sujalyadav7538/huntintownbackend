@@ -499,14 +499,20 @@ export const getMyActivity = async (req, res, next) => {
     const responses = await Response.find({
       respondedBy: userId,
     })
+      .select(
+        "postId message answers status acceptedAt completedAt cancelledAt createdAt updatedAt",
+      )
       .populate({
         path: "postId",
+        select:
+          "id title description category address location budget timeline images status expiresAt author responsesCount createdAt",
         populate: {
           path: "author",
-          select: "name avatar rating location",
+          select: "-_id id name avatar role location",
         },
       })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     return res.status(200).json({
       success: true,
@@ -518,45 +524,23 @@ export const getMyActivity = async (req, res, next) => {
   }
 };
 
-export const getResponsesForMyPosts = async (req, res, next) => {
+export const getMyPosts = async (req, res, next) => {
   try {
     const userId = req.user._id;
 
-    const posts = await Post.find({ author: userId }).sort({ createdAt: -1 });
-
-    if (!posts.length) {
-      return res.status(200).json({
-        success: true,
-        count: 0,
-        data: [],
-      });
-    }
-
-    const postIds = posts.map((p) => p._id);
-
-    const responses = await Response.find({
-      postId: { $in: postIds },
+    const posts = await Post.find({
+      author: userId,
     })
-      .populate("respondedBy", "name avatar rating location")
-      .sort({ createdAt: -1 });
-
-    const responsesMap = new Map();
-
-    for (const r of responses) {
-      const key = r.postId.toString();
-      if (!responsesMap.has(key)) responsesMap.set(key, []);
-      responsesMap.get(key).push(r);
-    }
-
-    const data = posts.map((post) => ({
-      post,
-      responses: responsesMap.get(post._id.toString()) || [],
-    })).filter((item) => item.responses.length > 0);
+      .select(
+        "id title description category address location budget timeline images status expiresAt responsesCount createdAt",
+      )
+      .sort({ createdAt: -1 })
+      .lean();
 
     return res.status(200).json({
       success: true,
-      count: data.length,
-      data,
+      count: posts.length,
+      data: posts,
     });
   } catch (error) {
     next(error);

@@ -4,7 +4,7 @@ import {
   updateUserMetrics,
   getBadgeMetadata,
 } from "../service/userMetricService.js";
-import { METRIC_TYPES, GEO_TYPE } from "../config/constants.js";
+import { METRIC_TYPES, GEO_TYPE, POST_STATUS } from "../config/constants.js";
 import Metric from "../models/userMetricSchema.js";
 import UserBadge from "../models/userBadgeSchema.js";
 import Post from "../models/postSchema.js";
@@ -112,7 +112,7 @@ export const getPublicProfile = async (req, res, next) => {
 
     const [metric, post] = await Promise.all([
       Metric.findOne({
-        userId: publicUserId,
+        userId: user._id,
       })
         .select(
           [
@@ -128,8 +128,8 @@ export const getPublicProfile = async (req, res, next) => {
         .lean(),
 
       Post.find({
-        author: publicUserId,
-        status: METRIC_TYPES.POST_STATUS.LIVE,
+        author:   user._id,
+        status: POST_STATUS.LIVE,
         expiresAt: { $gt: new Date() },
       })
         .sort({ createdAt: -1 })
