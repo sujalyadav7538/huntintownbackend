@@ -49,8 +49,8 @@ export const getUserProfile = async (req, res, next) => {
       user: {
         ...user,
         metric,
+        posts: post,
       },
-      posts: post,
     });
   } catch (error) {
     next(error);
@@ -128,7 +128,7 @@ export const getPublicProfile = async (req, res, next) => {
         .lean(),
 
       Post.find({
-        author:   user._id,
+        author: user._id,
         status: POST_STATUS.LIVE,
         expiresAt: { $gt: new Date() },
       })
