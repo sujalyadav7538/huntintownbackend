@@ -75,14 +75,14 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true,
-      maxlength: [100, "Bio cannot exceed 100 characters"],
+      maxlength: [200, "Bio cannot exceed 200 characters"],
     },
 
     about: {
       type: String,
       default: "",
       trim: true,
-      maxlength: [500, "About cannot exceed 500 characters"],
+      maxlength: [1000, "About cannot exceed 1000 characters"],
     },
 
     role: {
@@ -286,16 +286,6 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
       index: true,
-    },
-
-    // --------------------------------------------------
-    // Relationships
-    // --------------------------------------------------
-
-    showcase: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: MODEL_NAMES.USER_SHOWCASE,
-      default: null,
     },
   },
   {

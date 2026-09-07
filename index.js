@@ -17,6 +17,7 @@ import dataRoute from "./routes/dataRoute.js";
 import responseRoute from "./routes/responseRoutes.js";
 import chatRoute from "./routes/chatRoutes.js";
 import ratingRoute from "./routes/ratingRoutes.js";
+import showCaseRoutes from "./routes/showCaseRoute.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -63,6 +64,7 @@ app.use("/api/data", dataRoute);
 app.use("/api/responses", responseRoute);
 app.use("/api/chat", chatRoute);
 app.use("/api/rating", ratingRoute);
+app.use("/api/showcase", showCaseRoutes);
 
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;

@@ -7,19 +7,15 @@ import {
 import { METRIC_TYPES, GEO_TYPE, POST_STATUS } from "../config/constants.js";
 import Metric from "../models/userMetricSchema.js";
 import UserBadge from "../models/userBadgeSchema.js";
+import UserShowcase from "../models/userShowCase.js";
 import Post from "../models/postSchema.js";
 
 export const getUserProfile = async (req, res, next) => {
   try {
     const userId = req.user._id;
 
-    const [user, metric, post] = await Promise.all([
-      User.findById(userId)
-        .select("-passwordHash -googleId -__v")
-        // .populate({
-        //   path: "showcase",
-        // })
-        .lean(),
+    const [user, metric, posts, showcase] = await Promise.all([
+      User.findById(userId).select("-passwordHash -googleId -__v").lean(),
 
       Metric.findOne({
         userId,
@@ -27,7 +23,18 @@ export const getUserProfile = async (req, res, next) => {
         .select("-userId -__v")
         .lean(),
 
-      Post.find({ author: userId }).sort({ createdAt: -1 }).limit(10).lean(),
+      Post.find({
+        author: userId,
+      })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+
+      UserShowcase.findOne({
+        userId,
+      })
+        .select("-userId -__v")
+        .lean(),
     ]);
 
     if (!user) {
@@ -46,10 +53,14 @@ export const getUserProfile = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
+
       user: {
         ...user,
         metric,
-        posts: post,
+        posts,
+        showcase: showcase || {
+          items: [],
+        },
       },
     });
   } catch (error) {
@@ -61,10 +72,6 @@ export const getPublicProfile = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    // --------------------------------------------------
-    // Validate public user ID
-    // --------------------------------------------------
-
     if (typeof id !== "string" || !id.trim()) {
       return res.status(400).json({
         success: false,
@@ -73,10 +80,6 @@ export const getPublicProfile = async (req, res, next) => {
     }
 
     const publicUserId = id.trim();
-
-    // --------------------------------------------------
-    // Fetch user + metric in parallel
-    // --------------------------------------------------
 
     const user = await User.findOne({
       id: publicUserId,
@@ -100,7 +103,6 @@ export const getPublicProfile = async (req, res, next) => {
           "createdAt",
         ].join(" "),
       )
-
       .lean();
 
     if (!user) {
@@ -110,7 +112,7 @@ export const getPublicProfile = async (req, res, next) => {
       });
     }
 
-    const [metric, post] = await Promise.all([
+    const [metric, posts, showcase] = await Promise.all([
       Metric.findOne({
         userId: user._id,
       })
@@ -135,13 +137,23 @@ export const getPublicProfile = async (req, res, next) => {
         .sort({ createdAt: -1 })
         .limit(10)
         .lean(),
+
+      UserShowcase.findOne({
+        userId: user._id,
+      })
+        .select("-userId -__v")
+        .lean(),
     ]);
 
-    // --------------------------------------------------
-    // Public response
-    // --------------------------------------------------
-
     delete user._id;
+
+    const publicShowcase = showcase
+      ? {
+          items: showcase.items.filter((item) => item.visibility === "public"),
+        }
+      : {
+          items: [],
+        };
 
     return res.status(200).json({
       success: true,
@@ -160,7 +172,10 @@ export const getPublicProfile = async (req, res, next) => {
               trustScore: metric.trustScore,
             }
           : null,
-        posts: post,
+
+        posts,
+
+        showcase: publicShowcase,
       },
     });
   } catch (error) {
@@ -220,7 +235,7 @@ export const updateProfile = async (req, res, next) => {
     // Parse multipart/form-data fields
     // --------------------------------------------------
 
-    let { name, role, bio, skills, address, coordinates, phone, website } =
+    let { name, role, bio, skills, address, coordinates, phone, website,about } =
       req.body;
 
     skills = parseJSONField(skills, "skills");
@@ -276,10 +291,28 @@ export const updateProfile = async (req, res, next) => {
 
       bio = bio.trim();
 
-      if (bio.length > 700) {
+      if (bio.length > 200) {
         return res.status(400).json({
           success: false,
-          message: "Bio cannot exceed 700 characters",
+          message: "Bio cannot exceed 200 characters",
+        });
+      }
+    }
+
+    if (about !== undefined) {
+      if (typeof about !== "string") {
+        return res.status(400).json({
+          success: false,
+          message: "Bio must be a string",
+        });
+      }
+
+      about = about.trim();
+
+      if (about.length > 1000) {
+        return res.status(400).json({
+          success: false,
+          message: "About cannot exceed 1000 characters",
         });
       }
     }
@@ -388,6 +421,10 @@ export const updateProfile = async (req, res, next) => {
 
     if (bio !== undefined) {
       user.bio = bio;
+    }
+    
+    if (about !== undefined) {
+      user.about = about;
     }
 
     if (skills !== undefined) {
