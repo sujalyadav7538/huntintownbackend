@@ -132,7 +132,7 @@ export const getUserReviews = async (req, res, next) => {
 export const reviewOwner = async (req, res, next) => {
   try {
     const { postId, rating, comment } = req.body;
-    const helperId = req.user.id;
+    const helperId = req.user._id;
 
     if (!postId || !rating) {
       return res.status(400).json({ success: false, message: "Missing required fields" });
@@ -166,7 +166,11 @@ export const reviewOwner = async (req, res, next) => {
       direction: "helper_to_hunter",
     });
 
-    await updateUserMetrics(post.author, [{ type: METRIC_TYPES.REVIEW, rating }]);
+    const metric=await updateUserMetrics(post.author, [{ type: METRIC_TYPES.REVIEW, rating }]);
+    const user = await User.findById(helperId);
+    user.rating=metric.reviewMetrics.averageRating;
+    user.trustscore=metric.trustScore;
+    await user.save();
 
     return res.status(201).json({ success: true, message: "Review submitted" });
   } catch (error) {

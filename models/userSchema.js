@@ -231,6 +231,19 @@ const userSchema = new mongoose.Schema(
       },
     },
 
+    // Rating...
+    rating: {
+      type: Number,
+      default: 0,
+    },
+
+    
+    // TrusrScore...
+    trustscore: {
+      type: Number,
+      default: 0,
+    },
+
     // --------------------------------------------------
     // Verification
     // --------------------------------------------------
@@ -323,11 +336,6 @@ userSchema.index(
   },
 );
 
-// Useful if searching/filtering users by showcase.
-userSchema.index({
-  showcase: 1,
-});
-
 // --------------------------------------------------
 // Cross-field validation
 // --------------------------------------------------
@@ -379,6 +387,5 @@ userSchema.pre("validate", function (next) {
 // Prefer doing this in the authentication/service layer.
 // If you implement hashing here, use bcrypt/argon2 and make
 // sure updateOne/findOneAndUpdate cannot bypass the hashing logic.
-
 
 export default mongoose.model(MODEL_NAMES.USER, userSchema);

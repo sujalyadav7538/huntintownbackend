@@ -18,7 +18,6 @@ import responseRoute from "./routes/responseRoutes.js";
 import chatRoute from "./routes/chatRoutes.js";
 import ratingRoute from "./routes/ratingRoutes.js";
 import showCaseRoutes from "./routes/showCaseRoute.js";
-import { normalizePublicIds } from "./utils/publicIds.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -35,13 +34,7 @@ app.use(
 );
 
 app.use(express.json());
-app.use((req, res, next) => {
-  const originalJson = res.json.bind(res);
 
-  res.json = (body) => originalJson(normalizePublicIds(body));
-
-  next();
-});
 
 // Socket Initialization
 

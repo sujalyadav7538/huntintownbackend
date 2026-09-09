@@ -3,11 +3,7 @@ import User from "../models/userSchema.js";
 import Metric from "../models/userMetricSchema.js";
 import UserBadge from "../models/userBadgeSchema.js";
 import { BADGE_RULES } from "../config/badgeRules.js";
-import {
-  METRIC_TYPES,
-  ACTIONS,
-  ROLES,
-} from "../config/constants.js";
+import { METRIC_TYPES, ACTIONS, ROLES } from "../config/constants.js";
 
 /**
  * Dispatch a single metric update (no trust-score/badge side-effects).
@@ -192,6 +188,7 @@ export const updateTrustScore = async (userId, session = null) => {
     { new: true, upsert: true, session },
   );
 
+  const user = await User.findById(userId);
   // ---------------- Review ----------------
   const reviewScore =
     metric.reviewMetrics.totalReviews === 0
@@ -249,6 +246,8 @@ export const updateTrustScore = async (userId, session = null) => {
     responseScore * 0.2;
 
   metric.trustScore = Number(trustScore.toFixed(2));
+  user.trustscore = trustScore;
+  await user.save({ session });
 
   await metric.save({ session });
 

@@ -99,12 +99,12 @@ export const createPost = async (req, res, next) => {
       questions: questions || [],
       contactMethods,
       images: imageUrls,
-      author: req.user.id,
+      author: req.user._id,
     });
 
-    await post.populate("author", "name avatar email rating location");
+    await post.populate("author", "name avatar email location rating trustscore");
 
-    await updateUserMetrics(req.user.id, [
+    await updateUserMetrics(req.user._id, [
       { type: METRIC_TYPES.HUNTER, action: ACTIONS.POST_CREATED },
       { type: METRIC_TYPES.ACTIVITY, action: ACTIONS.POST_CREATED },
     ]);
@@ -127,7 +127,7 @@ export const getAllPosts = async (req, res, next) => {
 
     const [posts, total] = await Promise.all([
       Post.find()
-        .populate("author", "name avatar rating location")
+        .populate("author", "name avatar rating trustscore location")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
