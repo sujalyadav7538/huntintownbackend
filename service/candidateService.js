@@ -65,7 +65,7 @@ export const fetchCandidatePosts = async ({ userId, userLocation }) => {
   return Post.find(filter)
     .populate({
       path: "author",
-      select: "-_id id name avatar location role",
+      select: "-_id name avatar location role",
     })
     .sort({
       createdAt: -1,

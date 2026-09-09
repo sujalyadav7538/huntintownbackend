@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import  UserShowcase  from "../models/userShowCase.js";
+import UserShowcase from "../models/userShowCase.js";
 
 const getUserId = (req) => req.user?._id;
 
@@ -144,7 +144,7 @@ export const updateShowcaseItem = async (req, res) => {
       });
     }
 
-    const updates = req.body;
+    const updates = { ...req.body };
 
     delete updates.id;
     delete updates._id;
@@ -208,9 +208,7 @@ export const deleteShowcaseItem = async (req, res) => {
       });
     }
 
-    const itemExists = showcase.items.some(
-      (item) => item.id === itemId,
-    );
+    const itemExists = showcase.items.some((item) => item.id === itemId);
 
     if (!itemExists) {
       return res.status(404).json({
@@ -219,9 +217,7 @@ export const deleteShowcaseItem = async (req, res) => {
       });
     }
 
-    showcase.items = showcase.items.filter(
-      (item) => item.id !== itemId,
-    );
+    showcase.items = showcase.items.filter((item) => item.id !== itemId);
 
     await showcase.save();
 
@@ -267,9 +263,7 @@ export const reorderShowcaseItems = async (req, res) => {
       });
     }
 
-    const existingIds = new Set(
-      showcase.items.map((item) => item.id),
-    );
+    const existingIds = new Set(showcase.items.map((item) => item.id));
 
     const requestedIds = new Set(itemIds);
 
@@ -284,9 +278,7 @@ export const reorderShowcaseItems = async (req, res) => {
       });
     }
 
-    const itemMap = new Map(
-      showcase.items.map((item) => [item.id, item]),
-    );
+    const itemMap = new Map(showcase.items.map((item) => [item.id, item]));
 
     showcase.items = itemIds.map((id, index) => {
       const item = itemMap.get(id);

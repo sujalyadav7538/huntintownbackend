@@ -18,7 +18,7 @@ export const createOffer = async (req, res, next) => {
   session.startTransaction();
   try {
     const { postId, message, answers } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     if (!mongoose.Types.ObjectId.isValid(postId)) {
       await session.abortTransaction();
@@ -108,7 +108,7 @@ export const createOffer = async (req, res, next) => {
 
     // Helper: submitted an offer
     await updateUserMetrics(
-      req.user._id,
+      req.user.id,
       [
         { type: METRIC_TYPES.HELPER, action: ACTIONS.OFFER_SUBMITTED },
         {
@@ -145,7 +145,7 @@ export const createOffer = async (req, res, next) => {
 export const getOffersByPost = async (req, res, next) => {
   try {
     const { postId } = req.params;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     if (!mongoose.Types.ObjectId.isValid(postId)) {
       return res.status(400).json({
@@ -237,7 +237,7 @@ export const acceptOffer = async (req, res, next) => {
     session.startTransaction();
 
     const { offerId } = req.params;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     if (!mongoose.Types.ObjectId.isValid(offerId)) {
       await session.abortTransaction();
@@ -353,7 +353,7 @@ export const acceptOffer = async (req, res, next) => {
     );
     // Hunter: accepted an offer
     await updateUserMetrics(
-      req.user._id,
+      req.user.id,
       [
         { type: METRIC_TYPES.HUNTER, action: ACTIONS.OFFER_ACCEPTED },
         {
@@ -400,7 +400,7 @@ export const rejectOffer = async (req, res, next) => {
   session.startTransaction();
   try {
     const { offerId } = req.params;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     if (!mongoose.Types.ObjectId.isValid(offerId)) {
       await session.abortTransaction();
@@ -490,7 +490,7 @@ export const rejectOffer = async (req, res, next) => {
 
 export const getMyActivity = async (req, res, next) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     const offers = await Offer.find({
       offeredBy: userId,
@@ -518,7 +518,7 @@ export const getMyActivity = async (req, res, next) => {
 
 export const getMyResponses = async (req, res, next) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     const posts = await Post.find({
       author: userId,

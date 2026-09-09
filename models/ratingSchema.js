@@ -44,4 +44,5 @@ ratingSchema.index(
   { postId: 1, hunter: 1, helper: 1, direction: 1 },
   { unique: true },
 );
+
 export default mongoose.model(MODEL_NAMES.RATING, ratingSchema);

@@ -53,4 +53,5 @@ const offerSchema = new mongoose.Schema(
   },
 );
 
+
 export default mongoose.model(MODEL_NAMES.OFFER, offerSchema);

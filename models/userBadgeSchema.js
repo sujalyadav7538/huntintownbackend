@@ -42,4 +42,5 @@ const userBadgeSchema = new mongoose.Schema(
   },
 );
 
+
 export default mongoose.model(MODEL_NAMES.USER_BADGE, userBadgeSchema);

@@ -1,6 +1,5 @@
 import "dotenv/config";
 import mongoose from "mongoose";
-import { v4 as uuidv4 } from "uuid";
 import bcrypt from "bcrypt";
 import connectDB from "./utils/MongoDBClient.js";
 import Post from "./models/postSchema.js";
@@ -8,56 +7,54 @@ import User from "./models/userSchema.js";
 import Response from "./models/responseSchema.js";
 import { POST_STATUS, RESPONSE_STATUS } from "./config/constants.js";
 
-const FRONTEND_CATEGORIES = [
-  "technology",
-  "design",
-  "marketing",
-  "writing",
-  "education",
-  "finance",
-  "healthcare",
-  "history",
-  "legal",
-  "home & living",
-  "transport",
-  "automotive",
-  "events",
-  "photography",
-  "video",
-  "music",
-  "fitness",
-  "beauty",
-  "food",
-  "cooking",
-  "shopping",
-  "travel",
-  "tourism",
-  "business",
-  "consulting",
-  "freelancing",
-  "jobs",
-  "accounting",
-  "real_estate",
-  "construction",
-  "repair",
-  "plumbing",
-  "electrical",
-  "cleaning",
-  "security",
-  "delivery",
-  "logistics",
-  "childcare",
-  "pets",
-  "gardening",
-  "sports",
-  "gaming",
-  "entertainment",
-  "social",
-  "community",
-  "other",
-];
+//   "technology",
+//   "design",
+//   "marketing",
+//   "writing",
+//   "education",
+//   "finance",
+//   "healthcare",
+//   "history",
+//   "legal",
+//   "home & living",
+//   "transport",
+//   "automotive",
+//   "events",
+//   "photography",
+//   "video",
+//   "music",
+//   "fitness",
+//   "beauty",
+//   "food",
+//   "cooking",
+//   "shopping",
+//   "travel",
+//   "tourism",
+//   "business",
+//   "consulting",
+//   "freelancing",
+//   "jobs",
+//   "accounting",
+//   "real_estate",
+//   "construction",
+//   "repair",
+//   "plumbing",
+//   "electrical",
+//   "cleaning",
+//   "security",
+//   "delivery",
+//   "logistics",
+//   "childcare",
+//   "pets",
+//   "gardening",
+//   "sports",
+//   "gaming",
+//   "entertainment",
+//   "social",
+//   "community",
+//   "other",
+// ];
 
-// ── Cloudinary sample image URLs ─────────────────────────────────────────────
 const CLOUDINARY_IMAGES = [
   "https://res.cloudinary.com/demo/image/upload/v1/samples/landscapes/architecture-signs.jpg",
   "https://res.cloudinary.com/demo/image/upload/v1/samples/landscapes/beach-boat.jpg",
@@ -846,7 +843,6 @@ async function seed() {
 
     if (!user) {
       user = await User.create({
-        id: uuidv4(),
         email,
         passwordHash: hashed,
         name: email.split("@")[0],
@@ -868,7 +864,6 @@ async function seed() {
 
     if (!user) {
       user = await User.create({
-        id: uuidv4(),
         email,
         passwordHash: hashed,
         name: email.split("@")[0],

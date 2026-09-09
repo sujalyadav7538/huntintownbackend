@@ -72,4 +72,5 @@ const conversationSchema = new mongoose.Schema(
   },
 );
 
+
 export default mongoose.model(MODEL_NAMES.CONVERSATION, conversationSchema);

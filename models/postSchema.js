@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 import {
   MODEL_NAMES,
   POST_STATUS,
-  POST_TYPE,
   GEO_TYPE,
 } from "../config/constants.js";
 
@@ -112,5 +111,6 @@ const postSchema = new mongoose.Schema(
     timestamps: true,
   },
 );
+
 
 export default mongoose.model(MODEL_NAMES.POST, postSchema);

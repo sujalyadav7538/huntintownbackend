@@ -28,4 +28,5 @@ const helperRatingSchema = new mongoose.Schema(
 // One review per helper per post
 helperRatingSchema.index({ postId: 1, helper: 1 }, { unique: true });
 
+
 export default mongoose.model(MODEL_NAMES.HELPER_RATING, helperRatingSchema);

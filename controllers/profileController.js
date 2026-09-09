@@ -4,7 +4,7 @@ import {
   updateUserMetrics,
   getBadgeMetadata,
 } from "../service/userMetricService.js";
-import { METRIC_TYPES, GEO_TYPE, POST_STATUS } from "../config/constants.js";
+import { METRIC_TYPES, GEO_TYPE } from "../config/constants.js";
 import Metric from "../models/userMetricSchema.js";
 import UserBadge from "../models/userBadgeSchema.js";
 import UserShowcase from "../models/userShowCase.js";
@@ -82,27 +82,10 @@ export const getPublicProfile = async (req, res, next) => {
     const publicUserId = id.trim();
 
     const user = await User.findOne({
-      id: publicUserId,
+      _id: publicUserId,
       isActive: true,
     })
-      .select(
-        [
-          "id",
-          "name",
-          "bio",
-          "role",
-          "avatar",
-          "coverImage",
-          "website",
-          "skills",
-          "isEmailVerified",
-          "isPhoneVerified",
-          "governmentVerificationStatus",
-          "isOnline",
-          "lastSeen",
-          "createdAt",
-        ].join(" "),
-      )
+      .select("-passwordHash -googleId -__v")
       .lean();
 
     if (!user) {
@@ -116,23 +99,11 @@ export const getPublicProfile = async (req, res, next) => {
       Metric.findOne({
         userId: user._id,
       })
-        .select(
-          [
-            "reviewMetrics",
-            "profileMetrics",
-            "helperMetrics",
-            "hunterMetrics",
-            "responseMetrics",
-            "activityMetrics",
-            "trustScore",
-          ].join(" "),
-        )
+        .select("-userId -__v")
         .lean(),
 
       Post.find({
         author: user._id,
-        status: POST_STATUS.LIVE,
-        expiresAt: { $gt: new Date() },
       })
         .sort({ createdAt: -1 })
         .limit(10)
@@ -145,46 +116,21 @@ export const getPublicProfile = async (req, res, next) => {
         .lean(),
     ]);
 
-    delete user._id;
-
-    const publicShowcase = showcase
-      ? {
-          items: showcase.items.filter((item) => item.visibility === "public"),
-        }
-      : {
-          items: [],
-        };
-
     return res.status(200).json({
       success: true,
 
       user: {
         ...user,
-
-        metric: metric
-          ? {
-              reviewMetrics: metric.reviewMetrics,
-              profileMetrics: metric.profileMetrics,
-              helperMetrics: metric.helperMetrics,
-              hunterMetrics: metric.hunterMetrics,
-              responseMetrics: metric.responseMetrics,
-              activityMetrics: metric.activityMetrics,
-              trustScore: metric.trustScore,
-            }
-          : null,
-
+        metric,
         posts,
-
-        showcase: publicShowcase,
+        showcase: showcase || {
+          items: [],
+        },
       },
     });
   } catch (error) {
     next(error);
   }
-};
-
-const normalizeString = (value) => {
-  return typeof value === "string" ? value.trim() : value;
 };
 
 const parseJSONField = (value, fieldName) => {
@@ -235,8 +181,17 @@ export const updateProfile = async (req, res, next) => {
     // Parse multipart/form-data fields
     // --------------------------------------------------
 
-    let { name, role, bio, skills, address, coordinates, phone, website,about } =
-      req.body;
+    let {
+      name,
+      role,
+      bio,
+      skills,
+      address,
+      coordinates,
+      phone,
+      website,
+      about,
+    } = req.body;
 
     skills = parseJSONField(skills, "skills");
     coordinates = parseJSONField(coordinates, "coordinates");
@@ -303,7 +258,7 @@ export const updateProfile = async (req, res, next) => {
       if (typeof about !== "string") {
         return res.status(400).json({
           success: false,
-          message: "Bio must be a string",
+          message: "About must be a string",
         });
       }
 
@@ -422,7 +377,7 @@ export const updateProfile = async (req, res, next) => {
     if (bio !== undefined) {
       user.bio = bio;
     }
-    
+
     if (about !== undefined) {
       user.about = about;
     }
@@ -449,7 +404,6 @@ export const updateProfile = async (req, res, next) => {
 
     if (coordinates !== undefined) {
       if (coordinates === null) {
-        // Allow user to remove location.
         user.location = undefined;
       } else {
         user.location = {
@@ -535,10 +489,6 @@ export const updateProfile = async (req, res, next) => {
 
     const updatedUser = await User.findById(user._id)
       .select("-passwordHash -googleId -__v")
-      // .populate({
-      //   path: "showcase",
-      //   select: "-__v",
-      // })
       .lean();
 
     return res.status(200).json({
@@ -553,13 +503,21 @@ export const updateProfile = async (req, res, next) => {
 
 export const getMyMetric = async (req, res, next) => {
   try {
-    const metric = await Metric.findOne({ userId: req.user._id });
+    const metric = await Metric.findOne({
+      userId: req.user._id,
+    });
+
     if (!metric) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Metric not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Metric not found",
+      });
     }
-    return res.status(200).json({ success: true, metric });
+
+    return res.status(200).json({
+      success: true,
+      metric,
+    });
   } catch (error) {
     next(error);
   }
@@ -567,13 +525,21 @@ export const getMyMetric = async (req, res, next) => {
 
 export const getMyBadges = async (req, res, next) => {
   try {
-    const userBadge = await UserBadge.findOne({ userId: req.user._id });
+    const userBadge = await UserBadge.findOne({
+      userId: req.user._id,
+    });
+
     if (!userBadge) {
-      return res.status(200).json({ success: true, badges: [] });
+      return res.status(200).json({
+        success: true,
+        badges: [],
+      });
     }
+
     // Enrich each badge with its metadata from BADGE_RULES
     const enriched = userBadge.badges.map((b) => {
       const meta = getBadgeMetadata(b.badgeId) || {};
+
       return {
         badgeId: b.badgeId,
         level: b.level,
@@ -585,7 +551,11 @@ export const getMyBadges = async (req, res, next) => {
         rarity: meta.rarity || "common",
       };
     });
-    return res.status(200).json({ success: true, badges: enriched });
+
+    return res.status(200).json({
+      success: true,
+      badges: enriched,
+    });
   } catch (error) {
     next(error);
   }

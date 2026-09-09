@@ -144,7 +144,7 @@ export const createResponse = async (req, res, next) => {
     await session.commitTransaction();
     session.endSession();
 
-    await response.populate("respondedBy", "name avatar");
+    await response.populate("respondedBy", "_id name avatar");
 
     return res.status(201).json({
       success: true,
@@ -187,9 +187,8 @@ export const getResponsesByPost = async (req, res, next) => {
       });
     }
 
-    // 1. Fetch responses
     const responses = await Response.find({ postId })
-      .populate("respondedBy", "name avatar rating location")
+      .populate("respondedBy", "_id name avatar rating location")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -201,30 +200,28 @@ export const getResponsesByPost = async (req, res, next) => {
       });
     }
 
-    // 2. Collect responder IDs
     const userIds = responses.map((r) => r.respondedBy?._id).filter(Boolean);
 
-    // 3. Fetch all metrics in ONE query
     const metrics = await Metric.find({
       userId: { $in: userIds },
     })
       .select("userId trustScore")
       .lean();
 
-    // 4. Create quick lookup
     const metricMap = new Map(
       metrics.map((m) => [m.userId.toString(), m.trustScore ?? 0]),
     );
 
-    // 5. Attach trust score
     const scoredResponses = responses.map((r) => ({
       ...r,
       trustScore: metricMap.get(r.respondedBy?._id?.toString()) ?? 0,
     }));
 
-    // 6. Sort by trust score, then by newest
     scoredResponses.sort((a, b) => {
-      if (b.trustScore !== a.trustScore) return b.trustScore - a.trustScore;
+      if (b.trustScore !== a.trustScore) {
+        return b.trustScore - a.trustScore;
+      }
+
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
@@ -249,6 +246,7 @@ export const acceptResponse = async (req, res, next) => {
 
     if (!mongoose.Types.ObjectId.isValid(responseId)) {
       await session.abortTransaction();
+
       return res.status(400).json({
         success: false,
         message: "Invalid response id",
@@ -259,6 +257,7 @@ export const acceptResponse = async (req, res, next) => {
 
     if (!response) {
       await session.abortTransaction();
+
       return res.status(404).json({
         success: false,
         message: "Response not found",
@@ -267,6 +266,7 @@ export const acceptResponse = async (req, res, next) => {
 
     if (response.status === RESPONSE_STATUS.ACCEPTED) {
       await session.abortTransaction();
+
       return res.status(400).json({
         success: false,
         message: "Response already accepted",
@@ -277,14 +277,16 @@ export const acceptResponse = async (req, res, next) => {
 
     if (!post) {
       await session.abortTransaction();
+
       return res.status(404).json({
         success: false,
         message: "Post not found",
       });
     }
 
-    if (post.author.toString() !== userId) {
+    if (post.author.toString() !== userId.toString()) {
       await session.abortTransaction();
+
       return res.status(403).json({
         success: false,
         message: "Unauthorized",
@@ -293,6 +295,7 @@ export const acceptResponse = async (req, res, next) => {
 
     if (![POST_STATUS.LIVE, POST_STATUS.IN_PROGRESS].includes(post.status)) {
       await session.abortTransaction();
+
       return res.status(400).json({
         success: false,
         message: "Post is no longer accepting responses",
@@ -347,20 +350,31 @@ export const acceptResponse = async (req, res, next) => {
     }
 
     const applicants = post?.applicants ?? [];
+
     post.applicants = [...applicants, response.respondedBy];
+
     await post.save({ session });
 
     // Helper: their response was accepted
     await updateUserMetrics(
       response.respondedBy,
-      [{ type: METRIC_TYPES.HELPER, action: ACTIONS.RESPONSE_ACCEPTED }],
+      [
+        {
+          type: METRIC_TYPES.HELPER,
+          action: ACTIONS.RESPONSE_ACCEPTED,
+        },
+      ],
       session,
     );
+
     // Hunter: accepted a response
     await updateUserMetrics(
-      req.user._id,
+      userId,
       [
-        { type: METRIC_TYPES.HUNTER, action: ACTIONS.RESPONSE_ACCEPTED },
+        {
+          type: METRIC_TYPES.HUNTER,
+          action: ACTIONS.RESPONSE_ACCEPTED,
+        },
         {
           type: METRIC_TYPES.ACTIVITY,
           action: ACTIONS.RESPONSE_ACCEPTED,
@@ -379,11 +393,11 @@ export const acceptResponse = async (req, res, next) => {
     await conversation.populate([
       {
         path: "participants",
-        select: "name avatar rating location",
+        select: "_id name avatar rating location",
       },
       {
         path: "post",
-        select: "title category",
+        select: "_id title category",
       },
     ]);
 
@@ -396,6 +410,7 @@ export const acceptResponse = async (req, res, next) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
+
     next(error);
   }
 };
@@ -403,6 +418,7 @@ export const acceptResponse = async (req, res, next) => {
 export const rejectResponse = async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
+
   try {
     const { responseId } = req.params;
     const userId = req.user._id;
@@ -410,6 +426,7 @@ export const rejectResponse = async (req, res, next) => {
     if (!mongoose.Types.ObjectId.isValid(responseId)) {
       await session.abortTransaction();
       session.endSession();
+
       return res.status(400).json({
         success: false,
         message: "Invalid response id",
@@ -421,6 +438,7 @@ export const rejectResponse = async (req, res, next) => {
     if (!response) {
       await session.abortTransaction();
       session.endSession();
+
       return res.status(404).json({
         success: false,
         message: "Response not found",
@@ -432,15 +450,17 @@ export const rejectResponse = async (req, res, next) => {
     if (!post) {
       await session.abortTransaction();
       session.endSession();
+
       return res.status(404).json({
         success: false,
         message: "Post not found",
       });
     }
 
-    if (post.author.toString() !== userId) {
+    if (post.author.toString() !== userId.toString()) {
       await session.abortTransaction();
       session.endSession();
+
       return res.status(403).json({
         success: false,
         message: "Unauthorized",
@@ -450,6 +470,7 @@ export const rejectResponse = async (req, res, next) => {
     if (response.status === RESPONSE_STATUS.ACCEPTED) {
       await session.abortTransaction();
       session.endSession();
+
       return res.status(400).json({
         success: false,
         message: "Accepted response cannot be rejected",
@@ -459,6 +480,7 @@ export const rejectResponse = async (req, res, next) => {
     if (response.status === RESPONSE_STATUS.REJECTED) {
       await session.abortTransaction();
       session.endSession();
+
       return res.status(400).json({
         success: false,
         message: "Response already rejected",
@@ -471,8 +493,14 @@ export const rejectResponse = async (req, res, next) => {
     await updateUserMetrics(
       response.respondedBy,
       [
-        { type: METRIC_TYPES.HELPER, action: ACTIONS.RESPONSE_CANCELLED },
-        { type: METRIC_TYPES.HUNTER, action: ACTIONS.RESPONSE_CANCELLED },
+        {
+          type: METRIC_TYPES.HELPER,
+          action: ACTIONS.RESPONSE_CANCELLED,
+        },
+        {
+          type: METRIC_TYPES.HUNTER,
+          action: ACTIONS.RESPONSE_CANCELLED,
+        },
       ],
       session,
     );
@@ -488,6 +516,7 @@ export const rejectResponse = async (req, res, next) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
+
     next(error);
   }
 };
@@ -505,10 +534,10 @@ export const getMyActivity = async (req, res, next) => {
       .populate({
         path: "postId",
         select:
-          "id title description category address location budget timeline images status expiresAt author responsesCount createdAt",
+          "_id title description category address location budget timeline images status expiresAt author responsesCount createdAt",
         populate: {
           path: "author",
-          select: "-_id id name avatar role location",
+          select: "_id name avatar role location",
         },
       })
       .sort({ createdAt: -1 })
@@ -532,7 +561,7 @@ export const getMyPosts = async (req, res, next) => {
       author: userId,
     })
       .select(
-        "id title description category address location budget timeline images status expiresAt responsesCount createdAt",
+        "_id title description category address location budget timeline images status expiresAt responsesCount createdAt",
       )
       .sort({ createdAt: -1 })
       .lean();
@@ -559,7 +588,9 @@ export const getAllResponses = async (req, res, next) => {
       });
     }
 
-    const postExists = await Post.exists({ _id: postId });
+    const postExists = await Post.exists({
+      _id: postId,
+    });
 
     if (!postExists) {
       return res.status(404).json({
@@ -569,9 +600,16 @@ export const getAllResponses = async (req, res, next) => {
     }
 
     const sortOptions = {
-      trustScore: { trustScore: -1, createdAt: -1 },
-      earliest: { createdAt: 1 },
-      latest: { createdAt: -1 },
+      trustScore: {
+        trustScore: -1,
+        createdAt: -1,
+      },
+      earliest: {
+        createdAt: 1,
+      },
+      latest: {
+        createdAt: -1,
+      },
     };
 
     const selectedSort = sortOptions[sort] ?? sortOptions.trustScore;

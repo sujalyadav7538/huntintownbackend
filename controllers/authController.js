@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
+import { randomBytes } from "crypto";
 import mongoose from "mongoose";
-import { v4 as uuidv4 } from "uuid";
 import User from "../models/userSchema.js";
 import { generateAccessToken } from "../utils/generateToken.js";
 import Metric from "../models/userMetricSchema.js";
@@ -13,7 +13,7 @@ const normalizeEmail = (email) => email.trim().toLowerCase();
 const normalizeName = (name) => name.trim().replace(/\s+/g, " ");
 
 const userResponse = (user) => ({
-  id: user.id,
+  _id: String(user._id),
   name: user.name,
   email: user.email,
   role: user.role,
@@ -144,15 +144,9 @@ export const Signup = async (req, res, next) => {
       const [user] = await User.create(
         [
           {
-            id: uuidv4(),
-
             name: normalizedName,
-
             email: normalizedEmail,
-
             passwordHash,
-
-            // Explicit defaults if desired.
             isEmailVerified: false,
             isPhoneVerified: false,
             isActive: true,
@@ -195,8 +189,7 @@ export const Signup = async (req, res, next) => {
     // --------------------------------------------------
 
     const access_token = generateAccessToken({
-      _id: createdUser._id,
-      id: createdUser.id,
+      _id: String(createdUser._id),
       email: createdUser.email,
       name: createdUser.name,
     });
@@ -225,13 +218,6 @@ export const Signup = async (req, res, next) => {
         return res.status(409).json({
           success: false,
           message: "Email already registered",
-        });
-      }
-
-      if (duplicateField === "id") {
-        return res.status(409).json({
-          success: false,
-          message: "Unable to create user. Please try again",
         });
       }
     }
@@ -340,8 +326,7 @@ export const Signin = async (req, res, next) => {
     // --------------------------------------------------
 
     const access_token = generateAccessToken({
-      _id: user._id,
-      id: user.id,
+      _id: String(user._id),
       email: user.email,
       name: user.name,
     });
@@ -366,55 +351,83 @@ export const GoogleSignin = async (req, res, next) => {
     const { access_token: googleAccessToken } = req.body;
 
     if (!googleAccessToken) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Google access token required" });
+      return res.status(400).json({
+        success: false,
+        message: "Google access token required",
+      });
     }
 
     const googleRes = await fetch(
       "https://www.googleapis.com/oauth2/v3/userinfo",
       {
-        headers: { Authorization: `Bearer ${googleAccessToken}` },
+        headers: {
+          Authorization: `Bearer ${googleAccessToken}`,
+        },
       },
     );
 
     if (!googleRes.ok) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Invalid Google token" });
+      return res.status(401).json({
+        success: false,
+        message: "Invalid Google token",
+      });
     }
 
     const { sub: googleId, email, name, picture } = await googleRes.json();
 
     if (!email) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Google account has no email" });
+      return res.status(400).json({
+        success: false,
+        message: "Google account has no email",
+      });
     }
 
-    let user = await User.findOne({ $or: [{ googleId }, { email }] });
+    let user = await User.findOne({
+      $or: [{ googleId }, { email }],
+    });
 
     if (!user) {
       const session = await mongoose.startSession();
       session.startTransaction();
+
       try {
         const [created] = await User.create(
           [
             {
-              id: uuidv4(),
               name: name || email.split("@")[0],
               email,
-              password: await bcrypt.hash(uuidv4(), 10),
+              passwordHash: await bcrypt.hash(
+                randomBytes(32).toString("hex"),
+                10,
+              ),
               avatar: picture || "",
               googleId,
             },
           ],
           { session },
         );
-        await Metric.create([{ userId: created._id }], { session });
-        await UserBadge.create([{ userId: created._id }], { session });
+
+        await Metric.create(
+          [
+            {
+              userId: created._id,
+            },
+          ],
+          { session },
+        );
+
+        await UserBadge.create(
+          [
+            {
+              userId: created._id,
+            },
+          ],
+          { session },
+        );
+
         await session.commitTransaction();
         session.endSession();
+
         user = created;
       } catch (err) {
         await session.abortTransaction();
@@ -425,29 +438,32 @@ export const GoogleSignin = async (req, res, next) => {
       user.googleId = googleId;
     }
 
-    if (picture && !user.avatar) user.avatar = picture;
+    if (picture && !user.avatar) {
+      user.avatar = picture;
+    }
+
     user.lastSeen = new Date();
+
     await user.save();
 
     updateUserMetrics(user._id, [
-      { type: METRIC_TYPES.ACTIVITY, action: ACTIONS.LOGIN },
+      {
+        type: METRIC_TYPES.ACTIVITY,
+        action: ACTIONS.LOGIN,
+      },
     ]).catch(() => {});
 
     const access_token = generateAccessToken({
-      _id: user._id,
-      id: user.id,
+      _id: String(user._id),
       email: user.email,
       name: user.name,
     });
-
-    const userResponse = user.toObject();
-    delete userResponse.password;
 
     return res.status(200).json({
       success: true,
       message: "Google sign-in successful",
       access_token,
-      user: userResponse,
+      user: userResponse(user),
     });
   } catch (error) {
     next(error);

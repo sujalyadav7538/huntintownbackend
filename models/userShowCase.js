@@ -253,6 +253,7 @@ const userShowcaseSchema = new mongoose.Schema(
   },
 );
 
+
 const UserShowcase = mongoose.model(
   MODEL_NAMES.USER_SHOWCASE,
   userShowcaseSchema,

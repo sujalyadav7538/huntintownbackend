@@ -8,6 +8,7 @@ export function inferMessageType(mimeType = "") {
   if (mimeType.startsWith("image/")) return "image";
   if (mimeType.startsWith("video/")) return "video";
   if (mimeType.startsWith("audio/")) return "audio";
+
   return "document";
 }
 
@@ -16,7 +17,13 @@ export function inferMessageType(mimeType = "") {
  * Pass an already-started Mongoose session when the caller manages the transaction.
  */
 export async function persistChatMessage(
-  { conversationId, senderId, messageType = "text", content = "", attachment },
+  {
+    conversationId,
+    senderId,
+    messageType = "text",
+    content = "",
+    attachment,
+  },
   session = null,
 ) {
   const [message] = await Message.create(
@@ -36,7 +43,10 @@ export async function persistChatMessage(
 
   await Conversation.findByIdAndUpdate(
     conversationId,
-    { lastMessage: message._id, lastMessageAt: message.createdAt },
+    {
+      lastMessage: message._id,
+      lastMessageAt: message.createdAt,
+    },
     session ? { session } : {},
   );
 
@@ -50,7 +60,7 @@ export async function persistChatMessage(
  */
 export async function populateAndNormalize(messageId) {
   const msg = await Message.findById(messageId)
-    .populate("sender", "id name avatar")
+    .populate("sender", "_id name avatar")
     .lean();
 
   if (!msg) return null;

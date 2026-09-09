@@ -199,4 +199,5 @@ const userMetricSchema = new mongoose.Schema(
   },
 );
 
+
 export default mongoose.model(MODEL_NAMES.METRIC, userMetricSchema);

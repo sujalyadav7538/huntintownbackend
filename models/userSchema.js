@@ -12,19 +12,6 @@ const PHONE_REGEX = /^\+?[1-9]\d{7,14}$/;
 const userSchema = new mongoose.Schema(
   {
     // --------------------------------------------------
-    // Identity
-    // --------------------------------------------------
-
-    id: {
-      type: String,
-      required: [true, "User ID is required"],
-      unique: true,
-      immutable: true,
-      index: true,
-      trim: true,
-    },
-
-    // --------------------------------------------------
     // Authentication
     // --------------------------------------------------
 
@@ -297,7 +284,6 @@ const userSchema = new mongoose.Schema(
     // Prevent returning internal MongoDB fields accidentally.
     toJSON: {
       transform(_doc, ret) {
-        delete ret._id;
         delete ret.__v;
         delete ret.passwordHash;
         delete ret.googleId;
@@ -393,5 +379,6 @@ userSchema.pre("validate", function (next) {
 // Prefer doing this in the authentication/service layer.
 // If you implement hashing here, use bcrypt/argon2 and make
 // sure updateOne/findOneAndUpdate cannot bypass the hashing logic.
+
 
 export default mongoose.model(MODEL_NAMES.USER, userSchema);

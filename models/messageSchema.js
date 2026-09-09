@@ -64,4 +64,5 @@ messageSchema
     this.content = value;
   });
 
+
 export default mongoose.model(MODEL_NAMES.MESSAGE, messageSchema);

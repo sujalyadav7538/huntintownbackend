@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
+import User from "../models/userSchema.js";
 
-export const verifyToken = (req, res, next) => {
+export const verifyToken = async (req, res, next) => {
   try {
     const token = req.headers.authorization;
 
@@ -13,7 +14,26 @@ export const verifyToken = (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    req.user = decoded;
+    if (!decoded._id) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token",
+      });
+    }
+
+    const user = await User.findById(decoded._id).select("_id").lean();
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token",
+      });
+    }
+
+    req.user = {
+      ...decoded,
+      _id: user._id,
+    };
 
     next();
   } catch (error) {

@@ -56,4 +56,5 @@ const responseSchema = new mongoose.Schema(
 // A helper can apply only once per post.
 responseSchema.index({ postId: 1, respondedBy: 1 }, { unique: true });
 
+
 export default mongoose.model(MODEL_NAMES.RESPONSE, responseSchema);

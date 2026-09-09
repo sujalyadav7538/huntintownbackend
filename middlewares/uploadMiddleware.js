@@ -15,7 +15,7 @@ const storage = new CloudinaryStorage({
         gravity: "face",
       },
     ],
-    public_id: `user_${req.user.id}_${Date.now()}`,
+    public_id: `user_${req.user._id}_${Date.now()}`,
   }),
 });
 
@@ -48,7 +48,14 @@ const postImageStorage = new CloudinaryStorage({
   params: async (_req, _file) => ({
     folder: "huntintown/posts",
     allowed_formats: ["jpg", "jpeg", "png", "webp"],
-    transformation: [{ width: 1200, height: 900, crop: "limit", quality: "auto:best" }],
+    transformation: [
+      {
+        width: 1200,
+        height: 900,
+        crop: "limit",
+        quality: "auto:best",
+      },
+    ],
     public_id: `post_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
   }),
 });
@@ -56,13 +63,16 @@ const postImageStorage = new CloudinaryStorage({
 export const uploadPostImages = multer({
   storage: postImageStorage,
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
 });
 
 const chatAttachmentStorage = multer.memoryStorage();
 
 const chatAttachmentFilter = (_req, file, cb) => {
   const allowedMimePrefixes = ["image/", "video/", "audio/"];
+
   const allowedMimeTypes = [
     "application/pdf",
     "application/msword",
@@ -87,7 +97,9 @@ const chatAttachmentFilter = (_req, file, cb) => {
 export const uploadChatAttachment = multer({
   storage: chatAttachmentStorage,
   fileFilter: chatAttachmentFilter,
-  limits: { fileSize: 20 * 1024 * 1024 },
+  limits: {
+    fileSize: 20 * 1024 * 1024,
+  },
 });
 
 export default upload;

@@ -27,12 +27,15 @@ export const getPostsWithConversations = async (req, res, next) => {
 
     // Group by post, accumulate stats
     const postMap = new Map();
+
     for (const conv of conversations) {
       if (!conv.post) continue;
+
       const postId = conv.post._id.toString();
+
       if (!postMap.has(postId)) {
         postMap.set(postId, {
-          _id: conv.post._id,
+          _id: String(conv.post._id),
           title: conv.post.title,
           category: conv.post.category,
           budget: conv.post.budget,
@@ -42,10 +45,15 @@ export const getPostsWithConversations = async (req, res, next) => {
           lastMessageAt: conv.lastMessageAt || conv.updatedAt,
         });
       }
+
       const entry = postMap.get(postId);
       entry.conversationCount++;
+
       const convTime = conv.lastMessageAt || conv.updatedAt;
-      if (convTime > entry.lastMessageAt) entry.lastMessageAt = convTime;
+
+      if (convTime > entry.lastMessageAt) {
+        entry.lastMessageAt = convTime;
+      }
     }
 
     return res.status(200).json({
@@ -107,7 +115,7 @@ export const getMyChats = async (req, res, next) => {
       .populate("post", "title category budget address status")
       .populate(
         "participants",
-        "id name avatar role rating location address isOnline lastSeen",
+        "_id name avatar role rating location address isOnline lastSeen",
       )
       .sort({ lastMessageAt: -1, updatedAt: -1 })
       .lean();
@@ -115,6 +123,7 @@ export const getMyChats = async (req, res, next) => {
     const conversationIds = conversations.map(
       (conversation) => conversation._id,
     );
+
     const unreadMap = new Map();
 
     if (conversationIds.length) {
@@ -122,7 +131,9 @@ export const getMyChats = async (req, res, next) => {
         {
           $match: {
             conversationId: { $in: conversationIds },
-            sender: { $ne: new mongoose.Types.ObjectId(userId) },
+            sender: {
+              $ne: new mongoose.Types.ObjectId(userId),
+            },
             isRead: false,
           },
         },
@@ -181,6 +192,7 @@ export const getConversationMessages = async (req, res, next) => {
   try {
     const { conversationId } = req.params;
     const userId = req.user._id;
+
     await Message.updateMany(
       {
         conversationId,
@@ -194,6 +206,7 @@ export const getConversationMessages = async (req, res, next) => {
         },
       },
     );
+
     const conversation = await Conversation.findById(conversationId);
 
     if (!conversation) {
@@ -215,7 +228,7 @@ export const getConversationMessages = async (req, res, next) => {
     }
 
     const messages = await Message.find({ conversationId })
-      .populate("sender", "id name avatar")
+      .populate("sender", "_id name avatar")
       .sort({ createdAt: 1 })
       .lean();
 
@@ -223,6 +236,12 @@ export const getConversationMessages = async (req, res, next) => {
       ...msg,
       conversationId: String(msg.conversationId),
       _id: String(msg._id),
+      sender: msg.sender
+        ? {
+            ...msg.sender,
+            _id: String(msg.sender._id),
+          }
+        : null,
       text: msg.content || msg.attachment?.fileName || "",
     }));
 
@@ -249,12 +268,14 @@ export const uploadAttachment = async (req, res, next) => {
       });
     }
 
-    const base64Data = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+    const base64Data = `data:${req.file.mimetype};base64,${req.file.buffer.toString(
+      "base64",
+    )}`;
 
     const uploaded = await cloudinary.uploader.upload(base64Data, {
       folder: "huntintown/chat",
       resource_type: "auto",
-      public_id: `chat_${req.user.id}_${Date.now()}`,
+      public_id: `chat_${req.user._id}_${Date.now()}`,
       use_filename: true,
       unique_filename: true,
       overwrite: false,
@@ -299,15 +320,10 @@ export const createMessage = async (req, res, next) => {
       });
     }
 
-    const dbUser = await User.findOne({ id: req.user.id }).select("_id");
-    if (!dbUser) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
+    const userId = req.user._id;
 
     const conversation = await Conversation.findById(conversationId);
+
     if (!conversation) {
       return res.status(404).json({
         success: false,
@@ -316,7 +332,7 @@ export const createMessage = async (req, res, next) => {
     }
 
     const isParticipant = conversation.participants.some((participant) =>
-      participant.equals(dbUser._id),
+      participant.equals(userId),
     );
 
     if (!isParticipant) {
@@ -342,7 +358,7 @@ export const createMessage = async (req, res, next) => {
 
     const createdMessage = await persistChatMessage({
       conversationId,
-      senderId: dbUser._id,
+      senderId: userId,
       messageType,
       content,
       attachment: attachment
@@ -360,12 +376,17 @@ export const createMessage = async (req, res, next) => {
     const normalized = await populateAndNormalize(createdMessage._id);
 
     const io = req.app.get("io");
+
     if (io) {
       io.to(conversationId).emit("new-message", normalized);
     }
 
-    updateUserMetrics(dbUser._id, [
-      { type: METRIC_TYPES.RESPONSE, conversation, message: createdMessage },
+    updateUserMetrics(userId, [
+      {
+        type: METRIC_TYPES.RESPONSE,
+        conversation,
+        message: createdMessage,
+      },
     ]).catch((err) => console.error("[Metric] responseMetrics failed:", err));
 
     return res.status(201).json({

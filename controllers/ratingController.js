@@ -132,7 +132,7 @@ export const getUserReviews = async (req, res, next) => {
 export const reviewOwner = async (req, res, next) => {
   try {
     const { postId, rating, comment } = req.body;
-    const helperId = req.user._id;
+    const helperId = req.user.id;
 
     if (!postId || !rating) {
       return res.status(400).json({ success: false, message: "Missing required fields" });
@@ -178,7 +178,7 @@ export const reviewOwner = async (req, res, next) => {
 export const getReviewStatus = async (req, res, next) => {
   try {
     const { postId } = req.params;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     const [helperReview, hunterReview] = await Promise.all([
       Rating.findOne({ postId, helper: userId, direction: "helper_to_hunter" }).select("_id"),

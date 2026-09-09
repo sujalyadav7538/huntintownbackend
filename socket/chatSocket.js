@@ -1,7 +1,10 @@
 import mongoose from "mongoose";
 import Conversation from "../models/conversationSchema.js";
 import User from "../models/userSchema.js";
-import { persistChatMessage, populateAndNormalize } from "../utils/chatUtils.js";
+import {
+  persistChatMessage,
+  populateAndNormalize,
+} from "../utils/chatUtils.js";
 import { updateUserMetrics } from "../service/userMetricService.js";
 import { METRIC_TYPES } from "../config/constants.js";
 
@@ -15,15 +18,7 @@ export default function registerChatSocket(io, socket) {
         });
       }
 
-      // Find logged in user using UUID from JWT
-      const dbUser = await User.findOne({ id: socket.user.id }).select("_id");
-
-      if (!dbUser) {
-        return callback?.({
-          success: false,
-          message: "User not found",
-        });
-      }
+      const userId = socket.user._id;
 
       const conversation = await Conversation.findById(conversationId);
 
@@ -35,7 +30,7 @@ export default function registerChatSocket(io, socket) {
       }
 
       const isParticipant = conversation.participants.some((participant) =>
-        participant.equals(dbUser._id),
+        participant.equals(userId),
       );
 
       if (!isParticipant) {
@@ -48,7 +43,7 @@ export default function registerChatSocket(io, socket) {
       socket.join(conversationId);
 
       console.log(
-        `[Socket] ${socket.user.id} joined conversation ${conversationId}`,
+        `[Socket] ${socket.user._id} joined conversation ${conversationId}`,
       );
 
       callback?.({
@@ -89,19 +84,7 @@ export default function registerChatSocket(io, socket) {
       }
 
       // Logged in user
-      const dbUser = await User.findOne({ id: socket.user.id }).session(
-        session,
-      );
-
-      if (!dbUser) {
-        await session.abortTransaction();
-        session.endSession();
-
-        return callback?.({
-          success: false,
-          message: "User not found",
-        });
-      }
+      const userId = socket.user._id;
 
       // Conversation
       const conversation =
@@ -119,7 +102,7 @@ export default function registerChatSocket(io, socket) {
 
       // Authorization
       const isParticipant = conversation.participants.some((participant) =>
-        participant.equals(dbUser._id),
+        participant.equals(userId),
       );
 
       if (!isParticipant) {
@@ -133,7 +116,12 @@ export default function registerChatSocket(io, socket) {
       }
 
       const message = await persistChatMessage(
-        { conversationId, senderId: dbUser._id, messageType: "text", content: text },
+        {
+          conversationId,
+          senderId: userId,
+          messageType: "text",
+          content: text,
+        },
         session,
       );
 
@@ -146,15 +134,15 @@ export default function registerChatSocket(io, socket) {
       callback?.({ success: true, message: normalized });
 
       // Fire-and-forget — never blocks message delivery
-      updateUserMetrics(dbUser._id, [
+      updateUserMetrics(userId, [
         { type: METRIC_TYPES.RESPONSE, conversation, message },
       ]).catch((err) => console.error("[Metric] responseMetrics failed:", err));
     } catch (error) {
       if (session.inTransaction()) await session.abortTransaction();
       session.endSession();
+
       console.error("[Socket] send-message error:", error);
       callback?.({ success: false, message: "Failed to send message" });
     }
   });
-
 }
