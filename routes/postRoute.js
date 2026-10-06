@@ -10,8 +10,9 @@ import {
   deletePost,
   getAvailablePosts,
   markPostCompleted,
+  searchPosts,
 } from "../controllers/postController.js";
-import { verifyToken } from "../middlewares/authMiddleware.js";
+import { optionalAuth, verifyToken } from "../middlewares/authMiddleware.js";
 import { uploadPostImages } from "../middlewares/uploadMiddleware.js";
 
 const router = express.Router();
@@ -36,11 +37,24 @@ router.post("/", verifyToken, (req, res, next) => {
         });
       }
 
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(400).json({
+          success: false,
+          statusCode: 400,
+          message: "Each image must be 5 MB or smaller.",
+        });
+      }
+
       return next(err);
     }
 
+    // fileFilter rejections (unsupported image type) are client errors.
     if (err) {
-      return next(err);
+      return res.status(400).json({
+        success: false,
+        statusCode: 400,
+        message: err.message || "Image upload failed.",
+      });
     }
 
     return createPost(req, res, next);
@@ -49,6 +63,8 @@ router.post("/", verifyToken, (req, res, next) => {
 
 router.get("/", getAllPosts);
 router.get("/getAvailablePosts", verifyToken, getAvailablePosts);
+// Must stay above "/:id" so "search" is not treated as a post id.
+router.get("/search", optionalAuth, searchPosts);
 router.get("/:id", getPostById);
 
 router.patch("/:id/complete", verifyToken, markPostCompleted);

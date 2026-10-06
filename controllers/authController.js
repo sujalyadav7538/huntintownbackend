@@ -27,6 +27,14 @@ const userResponse = (user) => ({
 });
 
 export const Signup = async (req, res, next) => {
+  if (req.body?.acceptedTerms !== true) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "Please accept the Terms & Conditions and Privacy Policy before creating an account.",
+    });
+  }
+
   const session = await mongoose.startSession();
 
   try {
@@ -147,6 +155,7 @@ export const Signup = async (req, res, next) => {
             name: normalizedName,
             email: normalizedEmail,
             passwordHash,
+            termsAcceptedAt: new Date(),
             isEmailVerified: false,
             isPhoneVerified: false,
             isActive: true,
@@ -348,7 +357,10 @@ export const Signin = async (req, res, next) => {
 
 export const GoogleSignin = async (req, res, next) => {
   try {
-    const { access_token: googleAccessToken } = req.body;
+    const {
+      access_token: googleAccessToken,
+      acceptedTerms,
+    } = req.body;
 
     if (!googleAccessToken) {
       return res.status(400).json({
@@ -387,6 +399,14 @@ export const GoogleSignin = async (req, res, next) => {
     });
 
     if (!user) {
+      if (acceptedTerms !== true) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Please accept the Terms & Conditions and Privacy Policy before creating an account.",
+        });
+      }
+
       const session = await mongoose.startSession();
       session.startTransaction();
 
@@ -400,6 +420,7 @@ export const GoogleSignin = async (req, res, next) => {
                 randomBytes(32).toString("hex"),
                 10,
               ),
+              termsAcceptedAt: new Date(),
               avatar: picture || "",
               googleId,
             },

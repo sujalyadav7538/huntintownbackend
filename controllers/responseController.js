@@ -12,6 +12,17 @@ import {
   CONVERSATION_STATUS,
 } from "../config/constants.js";
 import { NotificationManager } from "../utils/notificationManager.js";
+import {
+  parseSearchTerm,
+  buildSearchRegex,
+  buildFieldsSearch,
+} from "../utils/search.js";
+
+const parseStatusFilter = (value, allowed) => {
+  const status = typeof value === "string" ? value : "all";
+  if (status === "all" || allowed.includes(status)) return { status };
+  return { error: `Invalid status. Use one of: all, ${allowed.join(", ")}` };
+};
 
 export const createResponse = async (req, res, next) => {
   const session = await mongoose.startSession();
@@ -515,10 +526,32 @@ export const reconsiderResponse = async (req, res, next) => {
 export const getMyActivity = async (req, res, next) => {
   try {
     const userId = req.user._id;
+    const q = parseSearchTerm(req.query.q);
+    const { status, error } = parseStatusFilter(
+      req.query.status,
+      Object.values(RESPONSE_STATUS),
+    );
 
-    const responses = await Response.find({
-      respondedBy: userId,
-    })
+    if (error) {
+      return res.status(400).json({ success: false, message: error });
+    }
+
+    const filter = { respondedBy: userId };
+    if (status !== "all") filter.status = status;
+
+    if (q) {
+      const regex = buildSearchRegex(q);
+      const respondedPostIds = await Response.find({ respondedBy: userId }).distinct(
+        "postId",
+      );
+      const matchingPostIds = await Post.find({
+        _id: { $in: respondedPostIds },
+        $or: buildFieldsSearch(regex),
+      }).distinct("_id");
+      filter.$or = [{ postId: { $in: matchingPostIds } }, { message: regex }];
+    }
+
+    const responses = await Response.find(filter)
       .select(
         "postId message answers status acceptedAt completedAt cancelledAt createdAt updatedAt",
       )
@@ -547,10 +580,21 @@ export const getMyActivity = async (req, res, next) => {
 export const getMyPosts = async (req, res, next) => {
   try {
     const userId = req.user._id;
+    const q = parseSearchTerm(req.query.q);
+    const { status, error } = parseStatusFilter(
+      req.query.status,
+      Object.values(POST_STATUS),
+    );
 
-    const posts = await Post.find({
-      author: userId,
-    })
+    if (error) {
+      return res.status(400).json({ success: false, message: error });
+    }
+
+    const filter = { author: userId };
+    if (status !== "all") filter.status = status;
+    if (q) filter.$or = buildFieldsSearch(buildSearchRegex(q));
+
+    const posts = await Post.find(filter)
       .select(
         "_id title description category address location budget timeline images status expiresAt responsesCount createdAt",
       )

@@ -30,6 +30,11 @@ const userSchema = new mongoose.Schema(
       },
     },
 
+    termsAcceptedAt: {
+      type: Date,
+      default: null,
+    },
+
     // Always store a HASH here, never plaintext password.
     passwordHash: {
       type: String,

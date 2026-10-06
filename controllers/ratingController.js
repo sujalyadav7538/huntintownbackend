@@ -12,30 +12,113 @@ import {
   RESPONSE_STATUS,
 } from "../config/constants.js";
 
-export const rateUser = async (req, res) => {
+const isValidRating = (value) =>
+  Number.isInteger(value) && value >= 1 && value <= 5;
+
+/** GET /api/rating/post/:postId/helpers — owner lists accepted helpers with their rating state */
+export const getPostHelpers = async (req, res, next) => {
+  try {
+    const { postId } = req.params;
+    const ownerId = req.user._id;
+
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      return res.status(400).json({ success: false, message: "Invalid post id" });
+    }
+
+    const post = await Post.findById(postId).select("author title status").lean();
+    if (!post) {
+      return res.status(404).json({ success: false, message: "Post not found" });
+    }
+    if (String(post.author) !== String(ownerId)) {
+      return res.status(403).json({ success: false, message: "Unauthorized" });
+    }
+
+    const [responses, ratings] = await Promise.all([
+      Response.find({ postId, status: RESPONSE_STATUS.ACCEPTED })
+        .populate("respondedBy", "_id name avatar role")
+        .lean(),
+      Rating.find({ postId, hunter: ownerId, direction: "hunter_to_helper" })
+        .select("helper rating comment")
+        .lean(),
+    ]);
+
+    const ratingByHelper = new Map(ratings.map((r) => [String(r.helper), r]));
+
+    const helpers = responses
+      .filter((response) => response.respondedBy)
+      .map(({ _id: responseId, respondedBy: helper }) => {
+        const existing = ratingByHelper.get(String(helper._id));
+        return {
+          _id: helper._id,
+          name: helper.name,
+          avatar: helper.avatar || "",
+          role: helper.role || "",
+          responseId,
+          rated: Boolean(existing),
+          rating: existing?.rating ?? null,
+          comment: existing?.comment ?? "",
+        };
+      });
+
+    return res.status(200).json({
+      success: true,
+      post: { _id: post._id, title: post.title, status: post.status },
+      helpers,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** POST /api/rating — post owner rates an accepted helper after completion */
+export const rateUser = async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const { postId, hunter, helper, rating, comment } = req.body;
-    if (!postId || !hunter || !helper || !rating) {
+    const { postId, comment } = req.body;
+    const helper = req.body.helper ?? req.body.helperId;
+    const rating = Number(req.body.rating);
+    // The rater is always the authenticated user, never a client-supplied id.
+    const hunter = req.user._id;
+
+    if (
+      !mongoose.Types.ObjectId.isValid(postId) ||
+      !mongoose.Types.ObjectId.isValid(helper)
+    ) {
       await session.abortTransaction();
       session.endSession();
       return res
         .status(400)
-        .json({ success: false, message: "Missing required fields" });
+        .json({ success: false, message: "Valid postId and helper are required" });
     }
 
-    // Check if the hunter is the owner of the post
-    const isOwner = await Post.findOne({ _id: postId, author: hunter }).session(
-      session,
-    );
-    if (!isOwner) {
+    if (!isValidRating(rating)) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({
+      return res
+        .status(400)
+        .json({ success: false, message: "Rating must be a whole number from 1 to 5" });
+    }
+
+    const post = await Post.findOne({ _id: postId, author: hunter }).session(
+      session,
+    );
+    if (!post) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(403).json({
         success: false,
         message:
           "You are not the owner of this post and cannot rate the helper",
+      });
+    }
+
+    if (post.status !== POST_STATUS.COMPLETED) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: "Helpers can be rated once the post is completed",
       });
     }
 
@@ -66,7 +149,7 @@ export const rateUser = async (req, res) => {
     if (existingRating) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(401).json({
+      return res.status(409).json({
         success: false,
         message: "You have already rated this user for this post",
       });
@@ -77,7 +160,7 @@ export const rateUser = async (req, res) => {
       hunter,
       helper,
       rating,
-      comment,
+      comment: typeof comment === "string" ? comment.trim().slice(0, 500) : "",
       direction: "hunter_to_helper",
     });
     await newRating.save({ session });
@@ -95,10 +178,11 @@ export const rateUser = async (req, res) => {
     session.endSession();
 
     const reviewer = await User.findById(hunter).select("_id name avatar").lean();
-    await NotificationManager.ratingReceived({
+    await NotificationManager.ratedForCompletion({
       userId: helper,
       reviewer,
       rating: newRating,
+      post,
     });
 
     return res.status(201).json({
@@ -107,9 +191,9 @@ export const rateUser = async (req, res) => {
       rating: newRating,
     });
   } catch (error) {
-    await session.abortTransaction();
+    if (session.inTransaction()) await session.abortTransaction();
     session.endSession();
-    res.status(500).json({ success: false, message: error.message });
+    next(error);
   }
 };
 
@@ -146,14 +230,15 @@ export const getUserReviews = async (req, res, next) => {
 /** POST /api/rating/review-owner — helper rates the post owner after completion */
 export const reviewOwner = async (req, res, next) => {
   try {
-    const { postId, rating, comment } = req.body;
+    const { postId, comment } = req.body;
+    const rating = Number(req.body.rating);
     const helperId = req.user._id;
 
-    if (!postId || !rating) {
-      return res.status(400).json({ success: false, message: "Missing required fields" });
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      return res.status(400).json({ success: false, message: "Valid postId is required" });
     }
-    if (rating < 1 || rating > 5) {
-      return res.status(400).json({ success: false, message: "Rating must be between 1 and 5" });
+    if (!isValidRating(rating)) {
+      return res.status(400).json({ success: false, message: "Rating must be a whole number from 1 to 5" });
     }
 
     const post = await Post.findById(postId);
@@ -177,7 +262,7 @@ export const reviewOwner = async (req, res, next) => {
       hunter: post.author,
       helper: helperId,
       rating,
-      comment: comment || "",
+      comment: typeof comment === "string" ? comment.trim().slice(0, 500) : "",
       direction: "helper_to_hunter",
     });
 

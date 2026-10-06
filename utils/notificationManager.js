@@ -59,7 +59,7 @@ export const NotificationManager = {
         },
       },
 
-      link: `/posts/${post._id}/responses`,
+      link: "/dashboard",
     });
   },
 
@@ -82,7 +82,7 @@ export const NotificationManager = {
         },
       },
 
-      link: `/messages/${conversationId}`,
+      link: `/messaging?conversationId=${conversationId}`,
     });
   },
 
@@ -105,7 +105,7 @@ export const NotificationManager = {
         },
       },
 
-      link: `/posts/${post._id}/offers`,
+      link: "/dashboard",
     });
   },
 
@@ -127,7 +127,7 @@ export const NotificationManager = {
           : undefined,
       },
 
-      link: `/posts/${post._id}`,
+      link: "/dashboard?view=submitted",
     });
   },
 
@@ -145,7 +145,7 @@ export const NotificationManager = {
         offerId: offer._id,
       },
 
-      link: `/posts/${post._id}`,
+      link: "/dashboard?view=submitted",
     });
   },
 
@@ -168,7 +168,31 @@ export const NotificationManager = {
         },
       },
 
-      link: `/profile/${userId}/ratings`,
+      link: `/profile/${userId}`,
+    });
+  },
+
+  ratedForCompletion: async ({ userId, reviewer, rating, post }) => {
+    return createNotification(userId, {
+      type: NOTIFICATION_TYPES.RATING,
+      action: NOTIFICATION_ACTIONS.RATE_BACK_REQUEST,
+
+      title: "You've been rated for completing a post",
+
+      message: `${reviewer.name} rated you ${rating.rating}/5 for completing "${post.title}". Please rate the owner back.`,
+
+      data: {
+        postId: post._id,
+        ratingId: rating._id,
+        value: rating.rating,
+        reviewer: {
+          _id: reviewer._id,
+          name: reviewer.name,
+          avatar: reviewer.avatar,
+        },
+      },
+
+      link: `/dashboard?view=submitted&ratePost=${post._id}`,
     });
   },
 
@@ -186,7 +210,7 @@ export const NotificationManager = {
         expiresAt: post.expiresAt,
       },
 
-      link: `/posts/${post._id}`,
+      link: "/dashboard",
     });
   },
 
@@ -203,7 +227,7 @@ export const NotificationManager = {
         postId: post._id,
       },
 
-      link: `/posts/${post._id}`,
+      link: "/dashboard",
     });
   },
 };

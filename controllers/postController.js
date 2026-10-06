@@ -1,7 +1,8 @@
 import mongoose from "mongoose";
 import Post from "../models/postSchema.js";
 import Response from "../models/responseSchema.js";
-import { geoCode } from "../utils/geoCode.js";
+import { geoCode, reverseGeoCode } from "../utils/geoCode.js";
+import cloudinary from "../utils/cloudinary.js";
 import { updateUserMetrics } from "../service/userMetricService.js";
 import {
   METRIC_TYPES,
@@ -10,6 +11,11 @@ import {
   POST_STATUS,
 } from "../config/constants.js";
 import User from "../models/userSchema.js";
+import {
+  parseSearchTerm,
+  buildSearchRegex,
+  buildFieldsSearch,
+} from "../utils/search.js";
 
 import {
   createRecommendationPool,
@@ -19,68 +25,119 @@ import {
 
 const PAGE_SIZE = 20;
 
-export const createPost = async (req, res, next) => {
+const SEARCH_FILTERS = ["all", "urgent", "trending", "nearby", "premium"];
+const TRENDING_MIN_RESPONSES = 8;
+const NEARBY_RADIUS_KM = 10;
+const EARTH_RADIUS_KM = 6378.1;
+
+const parseCoordinates = (lat, lng) => {
+  const latitude = Number(lat);
+  const longitude = Number(lng);
+  const valid =
+    lat !== undefined &&
+    lng !== undefined &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    Math.abs(latitude) <= 90 &&
+    Math.abs(longitude) <= 180;
+  return valid ? [longitude, latitude] : null;
+};
+
+const TITLE_MAX = 100;
+const DESCRIPTION_MAX = 300;
+const BUDGET_MAX = 40;
+const TIMELINE_MAX = 40;
+const MAX_QUESTIONS = 3;
+const QUESTION_MAX = 150;
+const DEFAULT_EXPIRY_DAYS = 7;
+const MIN_EXPIRY_DAYS = 1;
+const MAX_EXPIRY_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const readString = (value) => (typeof value === "string" ? value.trim() : "");
+
+const parseJsonField = (value, fallback) => {
+  if (typeof value !== "string") return value ?? fallback;
   try {
-    const {
-      title,
-      description,
-      category,
-      address,
-      type,
-      budget,
-      timeline,
-      expiryDays,
-      expiresAt,
-    } = req.body;
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
 
-    if (!title || !description || !category || !address) {
-      return res.status(400).json({
-        success: false,
-        message: "Required fields are missing",
-      });
+const isValidLngLat = (coordinates) =>
+  Array.isArray(coordinates) &&
+  coordinates.length === 2 &&
+  coordinates.every((value) => typeof value === "number" && Number.isFinite(value)) &&
+  Math.abs(coordinates[0]) <= 180 &&
+  Math.abs(coordinates[1]) <= 90;
+
+// Multer has already uploaded files to Cloudinary, so a rejected request must clean them up.
+const removeUploadedImages = (files = []) =>
+  Promise.allSettled(
+    files
+      .filter((file) => file?.filename)
+      .map((file) => cloudinary.uploader.destroy(file.filename)),
+  );
+
+export const createPost = async (req, res, next) => {
+  const reject = async (status, message) => {
+    await removeUploadedImages(req.files);
+    return res.status(status).json({ success: false, message });
+  };
+
+  try {
+    const title = readString(req.body.title);
+    const description = readString(req.body.description);
+    const category = readString(req.body.category);
+    const budget = readString(req.body.budget).slice(0, BUDGET_MAX);
+    const timeline = readString(req.body.timeline).slice(0, TIMELINE_MAX);
+    let address = readString(req.body.address);
+
+    if (!title || !description || !category) {
+      return reject(400, "Title, description and category are required");
+    }
+    if (title.length > TITLE_MAX) {
+      return reject(400, `Title must be ${TITLE_MAX} characters or fewer`);
+    }
+    if (description.length > DESCRIPTION_MAX) {
+      return reject(400, `Description must be ${DESCRIPTION_MAX} characters or fewer`);
     }
 
-    // Parse complex fields — may arrive as JSON strings when sent via FormData
-    let location = req.body.location;
-    if (typeof location === "string") {
-      try {
-        location = JSON.parse(location);
-      } catch {
-        location = null;
-      }
+    const location = parseJsonField(req.body.location, null);
+    let coordinates = isValidLngLat(location?.coordinates)
+      ? location.coordinates
+      : null;
+
+    if (!address && !coordinates) {
+      return reject(400, "Add an address or share your current location");
     }
 
-    let questions = req.body.questions;
-    if (typeof questions === "string") {
-      try {
-        questions = JSON.parse(questions);
-      } catch {
-        questions = [];
-      }
-    }
-
-    let contactMethods = req.body.contactMethods;
-    if (typeof contactMethods === "string") {
-      try {
-        contactMethods = JSON.parse(contactMethods);
-      } catch {
-        contactMethods = null;
-      }
-    }
-
-    // Images: prefer multer-uploaded files (Cloudinary URLs), fall back to body
-    let imageUrls = [];
-    if (req.files && req.files.length > 0) {
-      imageUrls = req.files.map((f) => f.path);
-    } else if (req.body.images) {
-      const raw = req.body.images;
-      imageUrls = Array.isArray(raw) ? raw : [];
-    }
-
-    let coordinates = location?.coordinates;
     if (!coordinates) {
       coordinates = await geoCode(address);
+      if (!isValidLngLat(coordinates)) {
+        return reject(
+          400,
+          "We couldn't find that address. Try a more specific one or use your current location.",
+        );
+      }
     }
+
+    if (!address) {
+      address = (await reverseGeoCode(coordinates)) || "Shared location";
+    }
+
+    const rawQuestions = parseJsonField(req.body.questions, []);
+    const questions = (Array.isArray(rawQuestions) ? rawQuestions : [])
+      .filter((question) => typeof question === "string")
+      .map((question) => question.trim().slice(0, QUESTION_MAX))
+      .filter(Boolean)
+      .slice(0, MAX_QUESTIONS);
+
+    const requestedDays = parseInt(req.body.expiryDays, 10);
+    const expiryDays = Number.isFinite(requestedDays)
+      ? Math.min(MAX_EXPIRY_DAYS, Math.max(MIN_EXPIRY_DAYS, requestedDays))
+      : DEFAULT_EXPIRY_DAYS;
 
     const post = await Post.create({
       title,
@@ -91,18 +148,17 @@ export const createPost = async (req, res, next) => {
         type: GEO_TYPE.POINT,
         coordinates,
       },
-      type,
-      budget,
-      timeline,
+      budget: budget || undefined,
+      timeline: timeline || undefined,
       expiryDays,
-      expiresAt,
-      questions: questions || [],
-      contactMethods,
-      images: imageUrls,
+      expiresAt: new Date(Date.now() + expiryDays * DAY_MS),
+      questions,
+      // Only server-uploaded images are accepted; arbitrary client URLs are ignored.
+      images: (req.files ?? []).map((file) => file.path),
       author: req.user._id,
     });
 
-    await post.populate("author", "name avatar email location rating trustscore");
+    await post.populate("author", "name avatar location rating trustscore");
 
     await updateUserMetrics(req.user._id, [
       { type: METRIC_TYPES.HUNTER, action: ACTIONS.POST_CREATED },
@@ -115,6 +171,7 @@ export const createPost = async (req, res, next) => {
       post,
     });
   } catch (error) {
+    await removeUploadedImages(req.files);
     next(error);
   }
 };
@@ -137,6 +194,114 @@ export const getAllPosts = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       count: posts.length,
+      page,
+      hasMore: skip + posts.length < total,
+      posts,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const searchPosts = async (req, res, next) => {
+  try {
+    const q = parseSearchTerm(req.query.q);
+    const filter =
+      typeof req.query.filter === "string"
+        ? req.query.filter.toLowerCase()
+        : "all";
+
+    if (!SEARCH_FILTERS.includes(filter)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid filter. Use one of: ${SEARCH_FILTERS.join(", ")}`,
+      });
+    }
+
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || PAGE_SIZE));
+    const skip = (page - 1) * limit;
+    const userId = req.user?._id;
+
+    // Same visibility rules as the Explore feed.
+    const query = {
+      status: { $in: [POST_STATUS.LIVE, POST_STATUS.IN_PROGRESS] },
+      expiresAt: { $gt: new Date() },
+    };
+    const and = [];
+
+    if (userId) {
+      const appliedPostIds = await Response.find({ respondedBy: userId }).distinct(
+        "postId",
+      );
+      query.author = { $ne: userId };
+      query._id = { $nin: appliedPostIds };
+    }
+
+    if (q) {
+      const regex = buildSearchRegex(q);
+      const authors = await User.find({ name: regex })
+        .select("_id")
+        .limit(200)
+        .lean();
+      and.push({
+        $or: [
+          ...buildFieldsSearch(regex),
+          { author: { $in: authors.map((author) => author._id) } },
+        ],
+      });
+    }
+
+    if (filter === "urgent") {
+      and.push({ $or: [{ title: /urgent/i }, { description: /urgent/i }] });
+    } else if (filter === "trending") {
+      query.responsesCount = { $gte: TRENDING_MIN_RESPONSES };
+    } else if (filter === "premium") {
+      query.budget = { $exists: true, $not: /^\s*(negotiable)?\s*$/i };
+    } else if (filter === "nearby") {
+      let coordinates = parseCoordinates(req.query.lat, req.query.lng);
+
+      if (!coordinates && userId) {
+        const user = await User.findById(userId).select("location").lean();
+        const [lng, lat] = user?.location?.coordinates ?? [];
+        coordinates = parseCoordinates(lat, lng);
+      }
+
+      if (!coordinates) {
+        return res.status(400).json({
+          success: false,
+          message: "Location is required for the nearby filter",
+        });
+      }
+
+      query.location = {
+        $geoWithin: {
+          $centerSphere: [coordinates, NEARBY_RADIUS_KM / EARTH_RADIUS_KM],
+        },
+      };
+    }
+
+    if (and.length) query.$and = and;
+
+    const sort =
+      filter === "trending"
+        ? { responsesCount: -1, createdAt: -1 }
+        : { createdAt: -1 };
+
+    const [posts, total] = await Promise.all([
+      Post.find(query)
+        .populate("author", "name avatar rating trustscore location role")
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Post.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      count: posts.length,
+      total,
       page,
       hasMore: skip + posts.length < total,
       posts,
