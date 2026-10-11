@@ -474,6 +474,7 @@ export const updateProfile = async (req, res, next) => {
     const avatarFile = req.files?.avatar?.[0];
     const coverImageFile = req.files?.coverImage?.[0];
     const shouldRemoveAvatar = req.body.removeAvatar === "true";
+    const shouldRemoveCoverImage = req.body.removeCoverImage === "true";
 
     let oldAvatarPublicId = null;
     let oldCoverPublicId = null;
@@ -503,6 +504,11 @@ export const updateProfile = async (req, res, next) => {
 
       user.coverImage = coverImageFile.path;
       user.coverImage_public_id = coverImageFile.filename;
+    } else if (shouldRemoveCoverImage) {
+      oldCoverPublicId = user.coverImage_public_id || null;
+
+      user.coverImage = "";
+      user.coverImage_public_id = "";
     }
 
     // --------------------------------------------------

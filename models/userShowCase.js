@@ -55,6 +55,7 @@ const showcaseItemSchema = new mongoose.Schema(
         "experience",
         "product",
         "portfolio",
+        "feed",
         "other",
       ],
       required: true,
@@ -226,7 +227,6 @@ const showcaseItemSchema = new mongoose.Schema(
         default: "",
       },
     },
-    
   },
   {
     _id: false,
@@ -252,7 +252,6 @@ const userShowcaseSchema = new mongoose.Schema(
     timestamps: true,
   },
 );
-
 
 const UserShowcase = mongoose.model(
   MODEL_NAMES.USER_SHOWCASE,

@@ -6,7 +6,7 @@ const storage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => ({
     folder: "huntintown/avatars",
-    allowed_formats: ["jpg", "jpeg", "png", "webp"],
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "heic", "heif"],
     transformation: [
       {
         width: 400,
@@ -25,12 +25,14 @@ const fileFilter = (req, file, cb) => {
     "image/jpg",
     "image/png",
     "image/webp",
+    "image/heic",
+    "image/heif",
   ];
 
   if (allowedMimeTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error("Only JPG, JPEG, PNG and WEBP images are allowed"), false);
+    cb(new Error("Only JPG, JPEG, PNG, WEBP, HEIC and HEIF images are allowed"), false);
   }
 };
 
@@ -47,7 +49,7 @@ const postImageStorage = new CloudinaryStorage({
   cloudinary,
   params: async (_req, _file) => ({
     folder: "huntintown/posts",
-    allowed_formats: ["jpg", "jpeg", "png", "webp"],
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "heic", "heif"],
     transformation: [
       {
         width: 1200,
@@ -62,6 +64,31 @@ const postImageStorage = new CloudinaryStorage({
 
 export const uploadPostImages = multer({
   storage: postImageStorage,
+  fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+});
+
+const showcaseImageStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req) => ({
+    folder: "huntintown/showcase",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "heic", "heif"],
+    transformation: [
+      {
+        width: 1200,
+        height: 900,
+        crop: "limit",
+        quality: "auto:best",
+      },
+    ],
+    public_id: `showcase_${req.user._id}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+  }),
+});
+
+export const uploadShowcaseImages = multer({
+  storage: showcaseImageStorage,
   fileFilter,
   limits: {
     fileSize: 5 * 1024 * 1024,

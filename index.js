@@ -18,6 +18,7 @@ import responseRoute from "./routes/responseRoutes.js";
 import chatRoute from "./routes/chatRoutes.js";
 import ratingRoute from "./routes/ratingRoutes.js";
 import showCaseRoutes from "./routes/showCaseRoute.js";
+import feedRoute from "./routes/feedRoute.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import serializeIds from "./middlewares/serializeIds.js";
 import { startPostExpiryScheduler } from "./service/notification/postExpiryScheduler.js";
@@ -71,6 +72,7 @@ app.use("/api/responses", responseRoute);
 app.use("/api/chat", chatRoute);
 app.use("/api/rating", ratingRoute);
 app.use("/api/showcase", showCaseRoutes);
+app.use("/api/feed", feedRoute);
 app.use("/api/notifications", notificationRoutes);
 
 
