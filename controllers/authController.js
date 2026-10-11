@@ -89,30 +89,19 @@ export const Signup = async (req, res, next) => {
     // Password validation
     // --------------------------------------------------
 
-    // if (password.length < 8) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "Password must contain at least 8 characters",
-    //   });
-    // }
+    const hasRequiredPasswordStrength =
+      password.length >= 8 &&
+      /[A-Z]/.test(password) &&
+      /[0-9]/.test(password) &&
+      /[^A-Za-z0-9\s]/.test(password);
 
-    // if (password.length > 128) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "Password cannot exceed 128 characters",
-    //   });
-    // }
-
-    // Optional stronger policy:
-    //
-    // if (!/[A-Z]/.test(password) ||
-    //     !/[a-z]/.test(password) ||
-    //     !/\d/.test(password)) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "Password must contain uppercase, lowercase and a number",
-    //   });
-    // }
+    if (!hasRequiredPasswordStrength) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Use at least 8 characters, including one uppercase letter, one number, and one special character (such as ! or #).",
+      });
+    }
 
     // --------------------------------------------------
     // Hash password BEFORE transaction
@@ -356,18 +345,23 @@ export const Signin = async (req, res, next) => {
 };
 
 export const GoogleSignin = async (req, res, next) => {
+  console.log("[GoogleSignin] Request received");
+
   try {
-    const {
-      access_token: googleAccessToken,
-      acceptedTerms,
-    } = req.body;
+    const { access_token: googleAccessToken } = req.body;
+
+    console.log("[GoogleSignin] Access token received:", !!googleAccessToken);
 
     if (!googleAccessToken) {
+      console.log("[GoogleSignin] ERROR: Access token missing");
+
       return res.status(400).json({
         success: false,
         message: "Google access token required",
       });
     }
+
+    console.log("[GoogleSignin] Calling Google userinfo API");
 
     const googleRes = await fetch(
       "https://www.googleapis.com/oauth2/v3/userinfo",
@@ -378,7 +372,13 @@ export const GoogleSignin = async (req, res, next) => {
       },
     );
 
+    console.log("[GoogleSignin] Google API status:", googleRes.status);
+
     if (!googleRes.ok) {
+      const errorBody = await googleRes.text();
+
+      console.error("[GoogleSignin] Google API error:", errorBody);
+
       return res.status(401).json({
         success: false,
         message: "Invalid Google token",
@@ -387,25 +387,36 @@ export const GoogleSignin = async (req, res, next) => {
 
     const { sub: googleId, email, name, picture } = await googleRes.json();
 
+    console.log("[GoogleSignin] Google user details:", {
+      googleId,
+      email,
+      name,
+      hasPicture: !!picture,
+    });
+
     if (!email) {
+      console.error("[GoogleSignin] ERROR: Google account has no email");
+
       return res.status(400).json({
         success: false,
         message: "Google account has no email",
       });
     }
 
+    console.log("[GoogleSignin] Searching for existing user");
+
     let user = await User.findOne({
       $or: [{ googleId }, { email }],
     });
 
+    console.log(
+      "[GoogleSignin] Existing user found:",
+      !!user,
+      user ? String(user._id) : null,
+    );
+
     if (!user) {
-      if (acceptedTerms !== true) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Please accept the Terms & Conditions and Privacy Policy before creating an account.",
-        });
-      }
+      console.log("[GoogleSignin] Creating new user");
 
       const session = await mongoose.startSession();
       session.startTransaction();
@@ -420,7 +431,6 @@ export const GoogleSignin = async (req, res, next) => {
                 randomBytes(32).toString("hex"),
                 10,
               ),
-              termsAcceptedAt: new Date(),
               avatar: picture || "",
               googleId,
             },
@@ -428,34 +438,30 @@ export const GoogleSignin = async (req, res, next) => {
           { session },
         );
 
-        await Metric.create(
-          [
-            {
-              userId: created._id,
-            },
-          ],
-          { session },
-        );
+        console.log("[GoogleSignin] User created:", String(created._id));
 
-        await UserBadge.create(
-          [
-            {
-              userId: created._id,
-            },
-          ],
-          { session },
-        );
+        await Metric.create([{ userId: created._id }], { session });
+
+        console.log("[GoogleSignin] Metric created");
+
+        await UserBadge.create([{ userId: created._id }], { session });
+
+        console.log("[GoogleSignin] UserBadge created");
 
         await session.commitTransaction();
-        session.endSession();
-
         user = created;
+
+        console.log("[GoogleSignin] Transaction committed");
       } catch (err) {
+        console.error("[GoogleSignin] User creation failed:", err);
+
         await session.abortTransaction();
-        session.endSession();
         throw err;
+      } finally {
+        await session.endSession();
       }
     } else if (!user.googleId) {
+      console.log("[GoogleSignin] Linking Google ID to existing user");
       user.googleId = googleId;
     }
 
@@ -467,18 +473,26 @@ export const GoogleSignin = async (req, res, next) => {
 
     await user.save();
 
+    console.log("[GoogleSignin] User saved successfully");
+
     updateUserMetrics(user._id, [
       {
         type: METRIC_TYPES.ACTIVITY,
         action: ACTIONS.LOGIN,
       },
-    ]).catch(() => {});
+    ]).catch((err) => {
+      console.error("[GoogleSignin] Metrics update failed:", err);
+    });
+
+    console.log("[GoogleSignin] Generating application JWT");
 
     const access_token = generateAccessToken({
       _id: String(user._id),
       email: user.email,
       name: user.name,
     });
+
+    console.log("[GoogleSignin] Sign-in successful");
 
     return res.status(200).json({
       success: true,
@@ -487,6 +501,7 @@ export const GoogleSignin = async (req, res, next) => {
       user: userResponse(user),
     });
   } catch (error) {
+    console.error("[GoogleSignin] FATAL ERROR:", error);
     next(error);
   }
 };
