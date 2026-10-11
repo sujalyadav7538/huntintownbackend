@@ -46,9 +46,7 @@ export async function processPostExpiry() {
 
 export function startPostExpiryScheduler() {
   const interval = setInterval(() => {
-    processPostExpiry().catch((error) =>
-      console.error("[PostExpiry] Processing failed:", error.message),
-    );
+    processPostExpiry().catch(() => undefined);
   }, 60 * 1000);
 
   interval.unref?.();

@@ -13,7 +13,6 @@ export const geoCode = async (address) => {
     const coordinates = data.features[0].geometry.coordinates;
     return coordinates;
   } catch (error) {
-    console.error("[geoCode] Failed to geocode address:", error.message);
     return null;
   }
 };
@@ -36,7 +35,6 @@ export const reverseGeoCode = async ([longitude, latitude]) => {
 
     return parts.length ? [...new Set(parts)].join(", ") : props.formatted || null;
   } catch (error) {
-    console.error("[geoCode] Failed to reverse geocode:", error.message);
     return null;
   }
 };

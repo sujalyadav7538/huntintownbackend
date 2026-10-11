@@ -616,7 +616,7 @@ export const getAllResponses = async (req, res, next) => {
     const { postId } = req.params;
     const { sort = "trustScore" } = req.query;
     const status = typeof req.query.status === "string" ? req.query.status : "";
-    const userId = req.user._id;
+    const userId = req.user?._id;
     const paginated = req.query.pagination === "true";
     const page = paginated
       ? Math.max(1, parseInt(req.query.page, 10) || 1)
@@ -642,9 +642,9 @@ export const getAllResponses = async (req, res, next) => {
       });
     }
 
-    // Only the post owner may read the actual applications. Everyone else gets
-    // the responder list without the private message and screening answers.
-    const isOwner = post.author.toString() === userId.toString();
+    const isOwner = Boolean(
+      userId && post.author.toString() === userId.toString(),
+    );
 
     if (status && !Object.values(RESPONSE_STATUS).includes(status)) {
       return res.status(400).json({
@@ -781,9 +781,7 @@ export const getAllResponses = async (req, res, next) => {
       },
     ]);
 
-    const visibleResponses = isOwner
-      ? responses
-      : responses.map(({ message, answers, ...rest }) => rest);
+    const visibleResponses = responses;
     const total = paginated
       ? await Response.countDocuments(responseMatch).exec()
       : visibleResponses.length;

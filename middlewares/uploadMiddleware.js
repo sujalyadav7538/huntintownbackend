@@ -9,8 +9,8 @@ const storage = new CloudinaryStorage({
     allowed_formats: ["jpg", "jpeg", "png", "webp"],
     transformation: [
       {
-        width: 500,
-        height: 500,
+        width: 400,
+        height: 400,
         crop: "fill",
         gravity: "face",
       },

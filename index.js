@@ -75,8 +75,12 @@ app.use("/api/notifications", notificationRoutes);
 
 
 app.use((err, req, res, next) => {
-  const statusCode = err.statusCode || 500;
-  const message = err.message || "Internal Error";
+  const statusCode = Number.isInteger(err.statusCode) ? err.statusCode : 500;
+  const message =
+    statusCode >= 500
+      ? "Something went wrong. Please try again."
+      : err.message || "Request failed.";
+
   res.status(statusCode).json({
     success: false,
     statusCode,
@@ -84,6 +88,4 @@ app.use((err, req, res, next) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+server.listen(PORT);

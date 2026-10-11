@@ -16,8 +16,8 @@ const router = express.Router();
 // Submit a response to a post
 router.post("/", verifyToken, createResponse);
 
-// Get all responses for a post (private fields are owner-only)
-router.get("/post/:postId", verifyToken, getAllResponses);
+// Public response list; submitting and managing responses remains authenticated.
+router.get("/post/:postId", getAllResponses);
 
 // Accept a response
 router.patch("/:responseId/accept", verifyToken, acceptResponse);

@@ -26,13 +26,7 @@ export const notificationQueue = redisConnection
     })
   : null;
 
-notificationQueue?.on("error", (error) => {
-  console.error("[NotificationQueue] Error:", {
-    name: error.name,
-    code: error.code,
-    message: error.message || String(error),
-  });
-});
+notificationQueue?.on("error", () => {});
 
 export const enqueueNotification = async (notificationId) => {
   if (!notificationQueue) return null;
@@ -50,11 +44,6 @@ export const enqueueNotification = async (notificationId) => {
 
     return job;
   } catch (error) {
-    console.error(
-      "[NotificationQueue] Failed to enqueue notification:",
-      error.message,
-    );
-
     throw error;
   }
 };

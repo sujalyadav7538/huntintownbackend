@@ -18,7 +18,7 @@ const postSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      maxlength: 300,
+      maxlength: 800,
     },
 
     // What the post is about

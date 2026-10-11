@@ -391,9 +391,7 @@ export const createMessage = async (req, res, next) => {
           conversationId,
           sender: normalized.sender,
           message: normalized,
-        }).catch((err) =>
-          console.error("[Notification] chat message failed:", err.message),
-        );
+        }).catch(() => undefined);
       });
 
     updateUserMetrics(userId, [
@@ -402,7 +400,7 @@ export const createMessage = async (req, res, next) => {
         conversation,
         message: createdMessage,
       },
-    ]).catch((err) => console.error("[Metric] responseMetrics failed:", err));
+    ]).catch(() => undefined);
 
     return res.status(201).json({
       success: true,

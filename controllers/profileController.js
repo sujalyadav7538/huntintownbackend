@@ -191,10 +191,12 @@ export const updateProfile = async (req, res, next) => {
       phone,
       website,
       about,
+      socialLinks,
     } = req.body;
 
     skills = parseJSONField(skills, "skills");
     coordinates = parseJSONField(coordinates, "coordinates");
+    socialLinks = parseJSONField(socialLinks, "socialLinks");
 
     // --------------------------------------------------
     // Validate fields before modifying user
@@ -312,6 +314,51 @@ export const updateProfile = async (req, res, next) => {
       website = website.trim();
     }
 
+    if (socialLinks !== undefined) {
+      if (
+        !socialLinks ||
+        typeof socialLinks !== "object" ||
+        Array.isArray(socialLinks)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Social links must be an object",
+        });
+      }
+
+      const normalizedLinks = {};
+      for (const field of [
+        "website",
+        "linkedin",
+        "github",
+        "twitter",
+        "instagram",
+        "facebook",
+        "youtube",
+      ]) {
+        const value = socialLinks[field];
+        if (value === undefined) continue;
+
+        if (typeof value !== "string") {
+          return res.status(400).json({
+            success: false,
+            message: `Social link ${field} must be a string`,
+          });
+        }
+
+        const normalizedValue = value.trim();
+        if (normalizedValue && !/^https?:\/\//i.test(normalizedValue)) {
+          return res.status(400).json({
+            success: false,
+            message: `Social link ${field} must use HTTP or HTTPS`,
+          });
+        }
+
+        normalizedLinks[field] = normalizedValue;
+      }
+      socialLinks = normalizedLinks;
+    }
+
     // --------------------------------------------------
     // Validate skills
     // --------------------------------------------------
@@ -398,6 +445,13 @@ export const updateProfile = async (req, res, next) => {
       user.website = website;
     }
 
+    if (socialLinks !== undefined) {
+      user.socialLinks = {
+        ...(user.socialLinks?.toObject?.() ?? user.socialLinks ?? {}),
+        ...socialLinks,
+      };
+    }
+
     // --------------------------------------------------
     // Location
     // --------------------------------------------------
@@ -419,6 +473,7 @@ export const updateProfile = async (req, res, next) => {
 
     const avatarFile = req.files?.avatar?.[0];
     const coverImageFile = req.files?.coverImage?.[0];
+    const shouldRemoveAvatar = req.body.removeAvatar === "true";
 
     let oldAvatarPublicId = null;
     let oldCoverPublicId = null;
@@ -432,6 +487,11 @@ export const updateProfile = async (req, res, next) => {
 
       user.avatar = avatarFile.path;
       user.avatar_public_id = avatarFile.filename;
+    } else if (shouldRemoveAvatar) {
+      oldAvatarPublicId = user.avatar_public_id || null;
+
+      user.avatar = "";
+      user.avatar_public_id = "";
     }
 
     // --------------------------------------------------

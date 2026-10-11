@@ -853,7 +853,6 @@ async function seed() {
         },
         address: "New Delhi, India",
       });
-      console.log("Created seed user:", user.email);
     }
 
     postAuthorUsers.push(user);
@@ -874,7 +873,6 @@ async function seed() {
         },
         address: "New Delhi, India",
       });
-      console.log("Created response seed user:", user.email);
     }
 
     responseSeedUsers.push(user);
@@ -884,7 +882,6 @@ async function seed() {
   const deleted = await Post.deleteMany({
     author: { $in: postAuthorUsers.map((u) => u._id) },
   });
-  console.log(`Cleared ${deleted.deletedCount} existing seed posts`);
 
   // Build post documents
   const posts = POST_TEMPLATES.map((template, index) => {
@@ -933,7 +930,6 @@ async function seed() {
 
   // timestamps:false lets our explicit createdAt values survive (controls freshnessScore)
   const inserted = await Post.insertMany(posts, { timestamps: false });
-  console.log(`Seeded ${inserted.length} posts successfully`);
 
   // Clear existing seeded responses
   const deletedResponses = await Response.deleteMany({
@@ -941,9 +937,6 @@ async function seed() {
       $in: [...postAuthorUsers, ...responseSeedUsers].map((u) => u._id),
     },
   });
-  console.log(
-    `Cleared ${deletedResponses.deletedCount} existing seed responses`,
-  );
 
   if (responseSeedUsers.length < 5) {
     throw new Error(
@@ -999,14 +992,10 @@ async function seed() {
     );
   }
 
-  console.log(`Seeded responses for ${inserted.length} posts successfully`);
-
   await mongoose.disconnect();
-  console.log("Disconnected from MongoDB");
 }
 
-seed().catch((err) => {
-  console.error("Seed failed:", err);
+seed().catch(() => {
   mongoose.disconnect();
   process.exit(1);
 });

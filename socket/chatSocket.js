@@ -42,16 +42,11 @@ export function registerChatSocket(io, socket) {
 
       socket.join(conversationId);
 
-      console.log(
-        `[Socket] ${socket.user._id} joined conversation ${conversationId}`,
-      );
-
       callback?.({
         success: true,
         message: "Joined successfully",
       });
-    } catch (err) {
-      console.error("[Socket] join-conversation error:", err);
+    } catch {
       callback?.({ success: false, message: "Internal server error" });
     }
   });
@@ -140,9 +135,7 @@ export function registerChatSocket(io, socket) {
             conversationId,
             sender: normalized.sender,
             message: normalized,
-          }).catch((err) =>
-            console.error("[Notification] chat message failed:", err.message),
-          );
+          }).catch(() => undefined);
         });
 
       callback?.({ success: true, message: normalized });
@@ -150,12 +143,11 @@ export function registerChatSocket(io, socket) {
       // Fire-and-forget — never blocks message delivery
       updateUserMetrics(userId, [
         { type: METRIC_TYPES.RESPONSE, conversation, message },
-      ]).catch((err) => console.error("[Metric] responseMetrics failed:", err));
-    } catch (error) {
+      ]).catch(() => undefined);
+    } catch {
       if (session.inTransaction()) await session.abortTransaction();
       session.endSession();
 
-      console.error("[Socket] send-message error:", error);
       callback?.({ success: false, message: "Failed to send message" });
     }
   });

@@ -19,20 +19,10 @@ const createNotification = async (userId, metadata) => {
 
     try {
       await enqueueNotification(notification._id);
-    } catch (error) {
-      console.error(
-        "[NotificationManager] Push queue unavailable:",
-        error.message,
-      );
-    }
+    } catch {}
 
     return notification;
   } catch (error) {
-    console.error(
-      "[NotificationManager] Failed to create notification:",
-      error.message,
-    );
-
     return null;
   }
 };

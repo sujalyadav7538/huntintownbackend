@@ -9,6 +9,25 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const PHONE_REGEX = /^\+?[1-9]\d{7,14}$/;
 
+const isHttpUrl = (value) => {
+  if (!value) return true;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const httpUrlField = (message) => ({
+  type: String,
+  default: "",
+  trim: true,
+  maxlength: 2048,
+  validate: { validator: isHttpUrl, message },
+});
+
 const userSchema = new mongoose.Schema(
   {
     // --------------------------------------------------
@@ -129,24 +148,22 @@ const userSchema = new mongoose.Schema(
       },
     },
 
-    website: {
-      type: String,
-      default: "",
-      trim: true,
-      maxlength: 2048,
-      validate: {
-        validator(value) {
-          if (!value) return true;
+    website: httpUrlField("Website must be a valid HTTP/HTTPS URL"),
 
-          try {
-            const url = new URL(value);
-            return ["http:", "https:"].includes(url.protocol);
-          } catch {
-            return false;
-          }
+    socialLinks: {
+      type: new mongoose.Schema(
+        {
+          website: httpUrlField("Social website must be a valid HTTP/HTTPS URL"),
+          linkedin: httpUrlField("LinkedIn must be a valid HTTP/HTTPS URL"),
+          github: httpUrlField("GitHub must be a valid HTTP/HTTPS URL"),
+          twitter: httpUrlField("X must be a valid HTTP/HTTPS URL"),
+          instagram: httpUrlField("Instagram must be a valid HTTP/HTTPS URL"),
+          facebook: httpUrlField("Facebook must be a valid HTTP/HTTPS URL"),
+          youtube: httpUrlField("YouTube must be a valid HTTP/HTTPS URL"),
         },
-        message: "Website must be a valid HTTP/HTTPS URL",
-      },
+        { _id: false },
+      ),
+      default: () => ({}),
     },
 
     // --------------------------------------------------

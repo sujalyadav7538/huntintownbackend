@@ -14,6 +14,8 @@ import upload from "../middlewares/uploadMiddleware.js";
 const router = express.Router();
 
 router.get("/", verifyToken, getUserProfile);
+router.get("/metrics", verifyToken, getMyMetric);
+router.get("/badges", verifyToken, getMyBadges);
 router.get("/:id", verifyToken, getPublicProfile);
 router.put(
   "/update",
@@ -24,7 +26,5 @@ router.put(
   ]),
   updateProfile,
 );
-router.get("/metrics", verifyToken, getMyMetric);
-router.get("/badges", verifyToken, getMyBadges);
 
 export default router;

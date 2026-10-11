@@ -24,10 +24,6 @@ const worker = redisConnection
       userId: notification.recipient,
     });
 
-    console.log(
-      `[NotificationWorker] ${notificationId}: recipient=${notification.recipient} subscriptions=${subscriptions.length}`,
-    );
-
     if (!subscriptions.length) {
       throw new Error(
         `No push subscriptions found for recipient ${notification.recipient}`,
@@ -48,9 +44,6 @@ const worker = redisConnection
     for (const subscription of subscriptions) {
       try {
         await sendPushNotification(subscription, payload);
-        console.log(
-          `[NotificationWorker] Push accepted by provider for subscription ${subscription._id}`,
-        );
       } catch (error) {
         if (error.statusCode === 404 || error.statusCode === 410) {
           await PushSubscription.deleteOne({
@@ -60,14 +53,6 @@ const worker = redisConnection
           continue;
         }
 
-        console.error(
-          `[NotificationWorker] Push failed for subscription ${subscription._id}:`,
-          {
-            statusCode: error.statusCode,
-            code: error.code,
-            message: error.message || String(error),
-          },
-        );
         throw error;
       }
     }
@@ -83,20 +68,4 @@ const worker = redisConnection
 
 if (worker) await connectDB();
 
-worker?.on("completed", (job) => {
-  console.log(`[NotificationWorker] Job ${job.id} completed`);
-});
-
-worker?.on("failed", (job, error) => {
-  console.error(`[NotificationWorker] Job ${job?.id} failed:`, error.message);
-});
-
-worker?.on("error", (error) => {
-  console.error("[NotificationWorker] Worker error:", error.message);
-});
-
-console.log(
-  worker
-    ? "[NotificationWorker] Started"
-    : "[NotificationWorker] Disabled: REDIS_URL is missing",
-);
+worker?.on("error", () => {});

@@ -24,8 +24,6 @@ export const getUserShowcase = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("getUserShowcase error:", error);
-
     return res.status(500).json({
       success: false,
       message: "Unable to fetch showcase",
@@ -88,8 +86,6 @@ export const addShowcaseItem = async (req, res) => {
       item: createdItem,
     });
   } catch (error) {
-    console.error("addShowcaseItem error:", error);
-
     if (error instanceof mongoose.Error.ValidationError) {
       return res.status(400).json({
         success: false,
@@ -163,8 +159,6 @@ export const updateShowcaseItem = async (req, res) => {
       item,
     });
   } catch (error) {
-    console.error("updateShowcaseItem error:", error);
-
     if (error instanceof mongoose.Error.ValidationError) {
       return res.status(400).json({
         success: false,
@@ -226,8 +220,6 @@ export const deleteShowcaseItem = async (req, res) => {
       message: "Showcase item deleted successfully",
     });
   } catch (error) {
-    console.error("deleteShowcaseItem error:", error);
-
     return res.status(500).json({
       success: false,
       message: "Unable to delete showcase item",
@@ -294,8 +286,6 @@ export const reorderShowcaseItems = async (req, res) => {
       items: showcase.items,
     });
   } catch (error) {
-    console.error("reorderShowcaseItems error:", error);
-
     return res.status(500).json({
       success: false,
       message: "Unable to reorder showcase",

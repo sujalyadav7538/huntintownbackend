@@ -3,13 +3,9 @@ import socketAuth from "./socketAuth.js";
 import User from "../models/userSchema.js";
 
 export default function initializeSocket(io) {
-  console.log("Socket Initialized");
-
   io.use(socketAuth);
 
   io.on("connection", async (socket) => {
-    console.log("Socket Connected:", socket.id);
-
     const userId = socket.user._id;
     const dbUserFilter = { _id: userId };
 
@@ -19,9 +15,7 @@ export default function initializeSocket(io) {
       });
 
       io.emit("user-online", userId);
-    } catch (error) {
-      console.error("Failed to mark user online:", error.message);
-    }
+    } catch {}
 
     registerChatSocket(io, socket);
 
@@ -38,11 +32,7 @@ export default function initializeSocket(io) {
           userId,
           lastSeen,
         });
-      } catch (error) {
-        console.error("Failed to mark user offline:", error.message);
-      }
-
-      console.log("Socket Disconnected:", socket.id);
+      } catch {}
     });
   });
 }
