@@ -195,6 +195,31 @@ export const getConversationMessages = async (req, res, next) => {
     const { conversationId } = req.params;
     const userId = req.user._id;
 
+    const conversation = await Conversation.findById(conversationId)
+      .populate("post", "title category budget address status")
+      .populate(
+        "participants",
+        "_id name avatar role rating location address isOnline lastSeen",
+      );
+
+    if (!conversation) {
+      return res.status(404).json({
+        success: false,
+        message: "Conversation not found",
+      });
+    }
+
+    const isParticipant = conversation.participants.some((participant) =>
+      String(participant._id ?? participant) === String(userId),
+    );
+
+    if (!isParticipant) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
     await Message.updateMany(
       {
         conversationId,
@@ -208,26 +233,6 @@ export const getConversationMessages = async (req, res, next) => {
         },
       },
     );
-
-    const conversation = await Conversation.findById(conversationId);
-
-    if (!conversation) {
-      return res.status(404).json({
-        success: false,
-        message: "Conversation not found",
-      });
-    }
-
-    const isParticipant = conversation.participants.some((participant) =>
-      participant.equals(userId),
-    );
-
-    if (!isParticipant) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
 
     const messages = await Message.find({ conversationId })
       .populate("sender", "_id name avatar")
@@ -250,6 +255,7 @@ export const getConversationMessages = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       count: normalizedMessages.length,
+      conversation,
       data: normalizedMessages,
     });
   } catch (error) {
