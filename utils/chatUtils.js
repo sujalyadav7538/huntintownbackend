@@ -73,3 +73,19 @@ export async function populateAndNormalize(messageId) {
     text: msg.content || msg.attachment?.fileName || "",
   };
 }
+
+export async function getConversationRoomUserIds(io, conversationId) {
+  if (!io) return new Set();
+
+  try {
+    const sockets = await io.in(String(conversationId)).fetchSockets();
+    return new Set(
+      sockets
+        .map((socket) => socket.data?.userId)
+        .filter(Boolean)
+        .map(String),
+    );
+  } catch {
+    return new Set();
+  }
+}

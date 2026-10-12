@@ -53,7 +53,21 @@ export const NotificationManager = {
     });
   },
 
-  newMessage: async ({ userId, conversationId, sender, message }) => {
+  newMessage: async ({
+    userId,
+    conversationId,
+    postId,
+    isHelper,
+    sender,
+    message,
+  }) => {
+    const chatMode = isHelper ? "chats" : "posts";
+    const params = new URLSearchParams({
+      postId: String(postId),
+      conversationId: String(conversationId),
+      chatMode,
+    });
+
     return createNotification(userId, {
       type: NOTIFICATION_TYPES.MESSAGE,
       action: NOTIFICATION_ACTIONS.NEW_MESSAGE,
@@ -64,6 +78,8 @@ export const NotificationManager = {
 
       data: {
         conversationId,
+        postId,
+        chatMode,
         messageId: message._id,
         sender: {
           _id: sender._id,
@@ -72,7 +88,7 @@ export const NotificationManager = {
         },
       },
 
-      link: `/messaging?conversationId=${conversationId}`,
+      link: `/messaging?${params.toString()}`,
     });
   },
 

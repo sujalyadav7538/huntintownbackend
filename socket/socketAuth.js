@@ -18,6 +18,7 @@ export default function socketAuth(socket, next) {
       ...decoded,
       _id: String(decoded._id),
     };
+    socket.data.userId = String(decoded._id);
 
     next();
   } catch {

@@ -3,6 +3,7 @@ import Conversation from "../models/conversationSchema.js";
 import {
   persistChatMessage,
   populateAndNormalize,
+  getConversationRoomUserIds,
 } from "../utils/chatUtils.js";
 import { updateUserMetrics } from "../service/userMetricService.js";
 import { ACTIONS, METRIC_TYPES } from "../config/constants.js";
@@ -127,16 +128,28 @@ export function registerChatSocket(io, socket) {
 
       io.to(conversationId).emit("new-message", normalized);
 
-      conversation.participants
-        .filter((participant) => String(participant) !== String(userId))
-        .forEach((participant) => {
-          NotificationManager.newMessage({
-            userId: participant,
-            conversationId,
-            sender: normalized.sender,
-            message: normalized,
-          }).catch(() => undefined);
-        });
+      const usersInConversation = await getConversationRoomUserIds(
+        io,
+        conversationId,
+      );
+      for (const participant of conversation.participants) {
+        const recipientId = String(participant);
+        if (
+          recipientId === String(userId) ||
+          usersInConversation.has(recipientId)
+        ) {
+          continue;
+        }
+
+        void NotificationManager.newMessage({
+          userId: participant,
+          conversationId,
+          postId: conversation.post,
+          isHelper: recipientId === String(conversation.helper),
+          sender: normalized.sender,
+          message: normalized,
+        }).catch(() => undefined);
+      }
 
       callback?.({ success: true, message: normalized });
 
