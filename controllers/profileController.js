@@ -1,4 +1,5 @@
 import User from "../models/userSchema.js";
+import mongoose from "mongoose";
 import cloudinary from "../utils/cloudinary.js";
 import {
   updateUserMetrics,
@@ -10,11 +11,26 @@ import UserBadge from "../models/userBadgeSchema.js";
 import UserShowcase from "../models/userShowCase.js";
 import Post from "../models/postSchema.js";
 
+const serializeBadges = (userBadge) =>
+  (userBadge?.badges ?? []).map((badge) => {
+    const metadata = getBadgeMetadata(badge.badgeId) || {};
+    return {
+      badgeId: badge.badgeId,
+      level: badge.level,
+      earnedAt: badge.earnedAt,
+      name: metadata.name || badge.badgeId,
+      description: metadata.description || "",
+      icon: metadata.icon || "",
+      category: metadata.category || "general",
+      rarity: metadata.rarity || "common",
+    };
+  });
+
 export const getUserProfile = async (req, res, next) => {
   try {
     const userId = req.user._id;
 
-    const [user, metric, posts, showcase] = await Promise.all([
+    const [user, initialMetric, posts, postsTotal, showcase, userBadge] = await Promise.all([
       User.findById(userId).select("-passwordHash -googleId -__v").lean(),
 
       Metric.findOne({
@@ -26,15 +42,19 @@ export const getUserProfile = async (req, res, next) => {
       Post.find({
         author: userId,
       })
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: -1, _id: -1 })
         .limit(10)
         .lean(),
+
+      Post.countDocuments({ author: userId }),
 
       UserShowcase.findOne({
         userId,
       })
         .select("-userId -__v")
         .lean(),
+
+      UserBadge.findOne({ userId }).lean(),
     ]);
 
     if (!user) {
@@ -42,6 +62,12 @@ export const getUserProfile = async (req, res, next) => {
         success: false,
         message: "User not found",
       });
+    }
+
+    let metric = initialMetric;
+    if (metric?.profileMetrics?.calculationVersion !== 2) {
+      await updateUserMetrics(userId, [{ type: METRIC_TYPES.PROFILE }]);
+      metric = await Metric.findOne({ userId }).select("-userId -__v").lean();
     }
 
     if (!metric) {
@@ -57,7 +83,9 @@ export const getUserProfile = async (req, res, next) => {
       user: {
         ...user,
         metric,
+        badges: serializeBadges(userBadge),
         posts,
+        postsTotal,
         showcase: showcase || {
           items: [],
         },
@@ -95,7 +123,7 @@ export const getPublicProfile = async (req, res, next) => {
       });
     }
 
-    const [metric, posts, showcase] = await Promise.all([
+    const [initialMetric, posts, postsTotal, showcase, userBadge] = await Promise.all([
       Metric.findOne({
         userId: user._id,
       })
@@ -105,16 +133,28 @@ export const getPublicProfile = async (req, res, next) => {
       Post.find({
         author: user._id,
       })
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: -1, _id: -1 })
         .limit(10)
         .lean(),
+
+      Post.countDocuments({ author: user._id }),
 
       UserShowcase.findOne({
         userId: user._id,
       })
         .select("-userId -__v")
         .lean(),
+
+      UserBadge.findOne({ userId: user._id }).lean(),
     ]);
+
+    let metric = initialMetric;
+    if (metric?.profileMetrics?.calculationVersion !== 2) {
+      await updateUserMetrics(user._id, [{ type: METRIC_TYPES.PROFILE }]);
+      metric = await Metric.findOne({ userId: user._id })
+        .select("-userId -__v")
+        .lean();
+    }
 
     return res.status(200).json({
       success: true,
@@ -122,11 +162,68 @@ export const getPublicProfile = async (req, res, next) => {
       user: {
         ...user,
         metric,
+        badges: serializeBadges(userBadge),
         posts,
+        postsTotal,
         showcase: showcase || {
           items: [],
         },
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getProfilePosts = async (req, res, next) => {
+  try {
+    const profileId = req.params.id ?? String(req.user._id);
+
+    if (!mongoose.Types.ObjectId.isValid(profileId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user id",
+      });
+    }
+
+    if (req.params.id) {
+      const profile = await User.findOne({
+        _id: profileId,
+        isActive: true,
+      })
+        .select("_id")
+        .lean();
+
+      if (!profile) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+    }
+
+    const requestedSkip = Number.parseInt(String(req.query.skip ?? "0"), 10);
+    const requestedLimit = Number.parseInt(String(req.query.limit ?? "10"), 10);
+    const skip = Number.isFinite(requestedSkip) ? Math.max(0, requestedSkip) : 0;
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(10, Math.max(1, requestedLimit))
+      : 10;
+    const query = { author: profileId };
+
+    const [posts, total] = await Promise.all([
+      Post.find(query)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Post.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      posts,
+      total,
+      hasMore: skip + posts.length < total,
     });
   } catch (error) {
     next(error);
@@ -569,9 +666,14 @@ export const updateProfile = async (req, res, next) => {
 
 export const getMyMetric = async (req, res, next) => {
   try {
-    const metric = await Metric.findOne({
+    let metric = await Metric.findOne({
       userId: req.user._id,
     });
+
+    if (metric?.profileMetrics?.calculationVersion !== 2) {
+      await updateUserMetrics(req.user._id, [{ type: METRIC_TYPES.PROFILE }]);
+      metric = await Metric.findOne({ userId: req.user._id });
+    }
 
     if (!metric) {
       return res.status(404).json({
@@ -602,25 +704,9 @@ export const getMyBadges = async (req, res, next) => {
       });
     }
 
-    // Enrich each badge with its metadata from BADGE_RULES
-    const enriched = userBadge.badges.map((b) => {
-      const meta = getBadgeMetadata(b.badgeId) || {};
-
-      return {
-        badgeId: b.badgeId,
-        level: b.level,
-        earnedAt: b.earnedAt,
-        name: meta.name || b.badgeId,
-        description: meta.description || "",
-        icon: meta.icon || "",
-        category: meta.category || "general",
-        rarity: meta.rarity || "common",
-      };
-    });
-
     return res.status(200).json({
       success: true,
-      badges: enriched,
+      badges: serializeBadges(userBadge),
     });
   } catch (error) {
     next(error);

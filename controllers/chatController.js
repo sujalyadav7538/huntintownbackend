@@ -5,7 +5,7 @@ import mongoose from "mongoose";
 import cloudinary from "../utils/cloudinary.js";
 import { updateUserMetrics } from "../service/userMetricService.js";
 import { NotificationManager } from "../utils/notificationManager.js";
-import { METRIC_TYPES } from "../config/constants.js";
+import { ACTIONS, METRIC_TYPES } from "../config/constants.js";
 import {
   inferMessageType,
   persistChatMessage,
@@ -401,6 +401,10 @@ export const createMessage = async (req, res, next) => {
       });
 
     updateUserMetrics(userId, [
+      {
+        type: METRIC_TYPES.ACTIVITY,
+        action: ACTIONS.MESSAGE_SENT,
+      },
       {
         type: METRIC_TYPES.RESPONSE,
         conversation,

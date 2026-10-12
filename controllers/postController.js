@@ -9,6 +9,7 @@ import {
   ACTIONS,
   GEO_TYPE,
   POST_STATUS,
+  RESPONSE_STATUS,
 } from "../config/constants.js";
 import User from "../models/userSchema.js";
 import {
@@ -44,7 +45,7 @@ const parseCoordinates = (lat, lng) => {
 };
 
 const TITLE_MAX = 100;
-const DESCRIPTION_MAX = 300;
+const DESCRIPTION_MAX = 800;
 const BUDGET_MAX = 40;
 const TIMELINE_MAX = 40;
 const MAX_QUESTIONS = 3;
@@ -370,6 +371,7 @@ export const updatePost = async (req, res, next) => {
       });
     }
 
+    const previousStatus = post.status;
     const {
       title,
       description,
@@ -386,6 +388,13 @@ export const updatePost = async (req, res, next) => {
       images,
       status,
     } = req.body;
+
+    if (status === POST_STATUS.COMPLETED) {
+      return res.status(400).json({
+        success: false,
+        message: "Use the completion endpoint to complete a post",
+      });
+    }
 
     if (coordinates !== undefined) {
       if (
@@ -416,6 +425,16 @@ export const updatePost = async (req, res, next) => {
     if (status !== undefined) post.status = status;
 
     await post.save();
+
+    if (
+      previousStatus !== POST_STATUS.CANCELLED &&
+      post.status === POST_STATUS.CANCELLED
+    ) {
+      await updateUserMetrics(req.user._id, [
+        { type: METRIC_TYPES.HUNTER, action: ACTIONS.POST_CANCELLED },
+        { type: METRIC_TYPES.ACTIVITY, action: ACTIONS.POST_CANCELLED },
+      ]);
+    }
 
     await post.populate("author", "name avatar rating location");
 
@@ -535,6 +554,22 @@ export const markPostCompleted = async (req, res, next) => {
 
     post.status = POST_STATUS.COMPLETED;
     await post.save({ session });
+
+    const acceptedResponse = await Response.findOne({
+      postId: post._id,
+      status: RESPONSE_STATUS.ACCEPTED,
+    }).session(session);
+
+    if (acceptedResponse) {
+      await updateUserMetrics(
+        acceptedResponse.respondedBy,
+        [
+          { type: METRIC_TYPES.HELPER, action: ACTIONS.RESPONSE_COMPLETED },
+          { type: METRIC_TYPES.ACTIVITY, action: ACTIONS.RESPONSE_COMPLETED },
+        ],
+        session,
+      );
+    }
 
     await updateUserMetrics(
       req.user._id,

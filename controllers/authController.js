@@ -180,6 +180,12 @@ export const Signup = async (req, res, next) => {
         ],
         { session },
       );
+
+      await updateUserMetrics(
+        user._id,
+        [{ type: METRIC_TYPES.PROFILE }],
+        session,
+      );
     });
 
     // --------------------------------------------------
@@ -408,6 +414,12 @@ export const GoogleSignin = async (req, res, next) => {
         await Metric.create([{ userId: created._id }], { session });
 
         await UserBadge.create([{ userId: created._id }], { session });
+
+        await updateUserMetrics(
+          created._id,
+          [{ type: METRIC_TYPES.PROFILE }],
+          session,
+        );
 
         await session.commitTransaction();
         user = created;

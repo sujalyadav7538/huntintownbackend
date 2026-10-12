@@ -200,28 +200,52 @@ export const rateUser = async (req, res, next) => {
 export const getUserReviews = async (req, res, next) => {
   try {
     const { userId } = req.params;
-    // Exclude reverse-direction (helper_to_hunter) reviews from the helper's public profile
-    const reviews = await Rating.find({
-      helper: userId,
-      direction: { $ne: "helper_to_hunter" },
-    })
-      .populate("hunter", "name avatar role")
-      .sort({ createdAt: -1 })
-      .limit(20);
+    const requestedSkip = Number.parseInt(String(req.query.skip ?? "0"), 10);
+    const requestedLimit = Number.parseInt(String(req.query.limit ?? "10"), 10);
+    const skip = Number.isFinite(requestedSkip) ? Math.max(0, requestedSkip) : 0;
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(10, Math.max(1, requestedLimit))
+      : 10;
+    const query = {
+      $or: [
+        { helper: userId, direction: { $ne: "helper_to_hunter" } },
+        { hunter: userId, direction: "helper_to_hunter" },
+      ],
+    };
+    const [reviews, total] = await Promise.all([
+      Rating.find(query)
+        .populate("hunter", "name avatar role")
+        .populate("helper", "name avatar role")
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit),
+      Rating.countDocuments(query),
+    ]);
 
     const mapped = reviews.map((r) => ({
       _id: r._id,
       hunter: {
-        name: r.hunter?.name || "Anonymous",
-        avatar: r.hunter?.avatar || "",
-        role: r.hunter?.role || "",
+        name:
+          (r.direction === "helper_to_hunter" ? r.helper : r.hunter)?.name ||
+          "Anonymous",
+        avatar:
+          (r.direction === "helper_to_hunter" ? r.helper : r.hunter)?.avatar ||
+          "",
+        role:
+          (r.direction === "helper_to_hunter" ? r.helper : r.hunter)?.role ||
+          "",
       },
       rating: r.rating,
       comment: r.comment || "",
       createdAt: r.createdAt,
     }));
 
-    return res.status(200).json({ success: true, reviews: mapped });
+    return res.status(200).json({
+      success: true,
+      reviews: mapped,
+      total,
+      hasMore: skip + reviews.length < total,
+    });
   } catch (error) {
     next(error);
   }

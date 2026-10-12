@@ -5,7 +5,7 @@ import {
   populateAndNormalize,
 } from "../utils/chatUtils.js";
 import { updateUserMetrics } from "../service/userMetricService.js";
-import { METRIC_TYPES } from "../config/constants.js";
+import { ACTIONS, METRIC_TYPES } from "../config/constants.js";
 import { NotificationManager } from "../utils/notificationManager.js";
 
 export function registerChatSocket(io, socket) {
@@ -142,6 +142,7 @@ export function registerChatSocket(io, socket) {
 
       // Fire-and-forget — never blocks message delivery
       updateUserMetrics(userId, [
+        { type: METRIC_TYPES.ACTIVITY, action: ACTIONS.MESSAGE_SENT },
         { type: METRIC_TYPES.RESPONSE, conversation, message },
       ]).catch(() => undefined);
     } catch {

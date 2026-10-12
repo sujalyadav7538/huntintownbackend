@@ -41,6 +41,11 @@ const userMetricSchema = new mongoose.Schema(
         default: 0,
       },
 
+      calculationVersion: {
+        type: Number,
+        default: 0,
+      },
+
       score: {
         type: Number,
         default: 0,
@@ -75,6 +80,11 @@ const userMetricSchema = new mongoose.Schema(
       },
 
       completionScore: {
+        type: Number,
+        default: 0,
+      },
+
+      score: {
         type: Number,
         default: 0,
       },
@@ -116,9 +126,19 @@ const userMetricSchema = new mongoose.Schema(
         type: Number,
         default: 0,
       },
+
+      score: {
+        type: Number,
+        default: 0,
+      },
     },
 
     responseMetrics: {
+      score: {
+        type: Number,
+        default: 0,
+      },
+
       hunter: {
         totalResponseTime: {
           type: Number, // Minutes

@@ -117,22 +117,8 @@ export const updateReviewMetric = async (userId, rating, session = null) => {
   return metric;
 };
 
-// Profile completion metric calculation
-const PROFILE_WEIGHTS = {
-  avatar: 10,
-  coverImage: 5,
-  name: 5,
-  bio: 10,
-  role: 5,
-  address: 10,
-  location: 10,
-  phone: 5,
-  website: 5,
-  skills: 10,
-  emailVerified: 10,
-  phoneVerified: 10,
-  governmentVerified: 15,
-};
+// Keep these nine checks aligned with calcCompletion in profileEditTypes.ts.
+const PROFILE_COMPLETION_FIELDS = 9;
 export const updateProfileMetric = async (userId, session = null) => {
   const user = await User.findById(userId).session(session);
 
@@ -140,41 +126,31 @@ export const updateProfileMetric = async (userId, session = null) => {
     throw new Error("User not found");
   }
 
-  let completion = 0;
-
-  if (user.avatar) completion += PROFILE_WEIGHTS.avatar;
-
-  if (user.coverImage) completion += PROFILE_WEIGHTS.coverImage;
-
-  if (user.name?.trim()) completion += PROFILE_WEIGHTS.name;
-
-  if (user.bio?.trim()) completion += PROFILE_WEIGHTS.bio;
-
-  if (user.role?.trim()) completion += PROFILE_WEIGHTS.role;
-
-  if (user.address?.trim()) completion += PROFILE_WEIGHTS.address;
-
-  if (user.location?.coordinates?.length === 2)
-    completion += PROFILE_WEIGHTS.location;
-
-  if (user.phone?.trim()) completion += PROFILE_WEIGHTS.phone;
-
-  if (user.website?.trim()) completion += PROFILE_WEIGHTS.website;
-
-  if (user.skills?.length > 0) completion += PROFILE_WEIGHTS.skills;
-
-  if (user.isEmailVerified) completion += PROFILE_WEIGHTS.emailVerified;
-
-  if (user.isPhoneVerified) completion += PROFILE_WEIGHTS.phoneVerified;
-
-  if (user.isGovernmentVerified)
-    completion += PROFILE_WEIGHTS.governmentVerified;
+  const checks = [
+    Boolean(user.name),
+    Boolean(user.role),
+    Boolean(user.address),
+    Boolean(user.bio),
+    Boolean(user.about),
+    Boolean(user.avatar),
+    Boolean(user.skills?.some((skill) => skill.trim().length > 0)),
+    Boolean(user.services?.some((service) => service.trim().length > 0)),
+    Boolean(
+      user.socialLinks?.linkedin ||
+        user.socialLinks?.github ||
+        user.socialLinks?.website,
+    ),
+  ];
+  const completion = Math.round(
+    (checks.filter(Boolean).length / PROFILE_COMPLETION_FIELDS) * 100,
+  );
 
   const metric = await Metric.findOneAndUpdate(
     { userId },
     {
       $set: {
         "profileMetrics.completion": completion,
+        "profileMetrics.calculationVersion": 2,
       },
     },
     {
@@ -204,7 +180,10 @@ export const updateTrustScore = async (userId, session = null) => {
   metric.reviewMetrics.score = Number(reviewScore.toFixed(2));
 
   // ---------------- Profile ----------------
-  const profileScore = metric.profileMetrics.completion;
+  const profileScore = Math.max(
+    0,
+    Math.min(100, metric.profileMetrics.completion),
+  );
 
   metric.profileMetrics.score = Number(profileScore.toFixed(2));
 
@@ -244,12 +223,17 @@ export const updateTrustScore = async (userId, session = null) => {
   metric.responseMetrics.score = responseScore;
 
   // ---------------- Final Trust Score ----------------
-  const trustScore =
-    reviewScore * 0.3 +
-    profileScore * 0.1 +
-    helperScore * 0.2 +
-    hunterScore * 0.2 +
-    responseScore * 0.2;
+  const trustScore = Math.max(
+    0,
+    Math.min(
+      100,
+      reviewScore * 0.3 +
+        profileScore * 0.1 +
+        helperScore * 0.2 +
+        hunterScore * 0.2 +
+        responseScore * 0.2,
+    ),
+  );
 
   metric.trustScore = Number(trustScore.toFixed(2));
 

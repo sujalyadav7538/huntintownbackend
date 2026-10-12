@@ -12,7 +12,6 @@ export const BADGE_RULES = [
     persistent: true,
     condition: (metric) => metric.profileMetrics.completion === 100,
   },
-
   {
     id: "TOP_RATED",
     name: "Top Rated",
@@ -26,7 +25,6 @@ export const BADGE_RULES = [
       metric.reviewMetrics.averageRating >= 4.8 &&
       metric.reviewMetrics.totalReviews >= 20,
   },
-
   {
     id: "TRUSTED_HELPER",
     name: "Trusted Helper",
@@ -40,18 +38,28 @@ export const BADGE_RULES = [
       metric.helperMetrics.completedResponses >= 25 &&
       metric.helperMetrics.completionScore >= 95,
   },
-
   {
     id: "POPULAR_HELPER",
     name: "Popular Helper",
+    description: "Had at least 50 offers accepted with a 70% acceptance rate.",
+    icon: "popular_helper",
+    category: "helper",
+    rarity: "rare",
+    level: BADGE_LEVELS.GOLD,
+    persistent: false,
     condition: (metric) =>
       metric.helperMetrics.responsesAccepted >= 50 &&
       metric.helperMetrics.acceptanceScore >= 70,
   },
-
   {
     id: "ELITE_MEMBER",
     name: "Elite Member",
+    description: "Reached a trust score of 90 or higher.",
+    icon: "elite_member",
+    category: "trust",
+    rarity: "legendary",
+    level: BADGE_LEVELS.GOLD,
+    persistent: false,
     condition: (metric) => metric.trustScore >= 90,
   },
 ];
