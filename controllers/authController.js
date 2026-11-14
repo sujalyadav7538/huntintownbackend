@@ -389,6 +389,7 @@ export const GoogleSignin = async (req, res, next) => {
     let user = await User.findOne({
       $or: [{ googleId }, { email }],
     });
+    const isNewUser = !user;
 
     if (!user) {
       const session = await mongoose.startSession();
@@ -457,6 +458,7 @@ export const GoogleSignin = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: "Google sign-in successful",
+      isNewUser,
       access_token,
       user: userResponse(user),
     });
