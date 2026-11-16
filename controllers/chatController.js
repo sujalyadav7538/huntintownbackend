@@ -11,6 +11,8 @@ import {
   persistChatMessage,
   populateAndNormalize,
   getConversationRoomUserIds,
+  emitToConversationUsers,
+  getUnreadCounts,
 } from "../utils/chatUtils.js";
 
 /**
@@ -95,10 +97,18 @@ export const getConversationsByPost = async (req, res, next) => {
       )
       .sort({ updatedAt: -1 });
 
+    const unreadCounts = await getUnreadCounts(
+      conversations.map((conversation) => conversation._id),
+      userId,
+    );
+
     return res.status(200).json({
       success: true,
       count: conversations.length,
-      data: conversations,
+      data: conversations.map((conversation) => ({
+        ...conversation.toJSON(),
+        unreadCount: unreadCounts.get(String(conversation._id)) ?? 0,
+      })),
     });
   } catch (error) {
     next(error);
@@ -127,31 +137,7 @@ export const getMyChats = async (req, res, next) => {
       (conversation) => conversation._id,
     );
 
-    const unreadMap = new Map();
-
-    if (conversationIds.length) {
-      const unreadCounts = await Message.aggregate([
-        {
-          $match: {
-            conversationId: { $in: conversationIds },
-            sender: {
-              $ne: new mongoose.Types.ObjectId(userId),
-            },
-            isRead: false,
-          },
-        },
-        {
-          $group: {
-            _id: "$conversationId",
-            count: { $sum: 1 },
-          },
-        },
-      ]);
-
-      unreadCounts.forEach((entry) => {
-        unreadMap.set(String(entry._id), entry.count);
-      });
-    }
+    const unreadMap = await getUnreadCounts(conversationIds, userId);
 
     const uniqueByPost = new Map();
 
@@ -221,20 +207,6 @@ export const getConversationMessages = async (req, res, next) => {
       });
     }
 
-    await Message.updateMany(
-      {
-        conversationId,
-        sender: { $ne: userId },
-        isRead: false,
-      },
-      {
-        isRead: true,
-        $addToSet: {
-          readBy: userId,
-        },
-      },
-    );
-
     const messages = await Message.find({ conversationId })
       .populate("sender", "_id name avatar")
       .sort({ createdAt: 1 })
@@ -244,6 +216,7 @@ export const getConversationMessages = async (req, res, next) => {
       ...msg,
       conversationId: String(msg.conversationId),
       _id: String(msg._id),
+      id: String(msg._id),
       sender: msg.sender
         ? {
             ...msg.sender,
@@ -259,6 +232,66 @@ export const getConversationMessages = async (req, res, next) => {
       conversation,
       data: normalizedMessages,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getUnreadMessageCount = async (req, res, next) => {
+  try {
+    const conversations = await Conversation.find({
+      participants: req.user._id,
+    }).select("_id").lean();
+    const counts = await getUnreadCounts(
+      conversations.map((conversation) => conversation._id),
+      req.user._id,
+    );
+    return res.json({
+      success: true,
+      unreadCount: [...counts.values()].reduce((sum, count) => sum + count, 0),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const markConversationRead = async (req, res, next) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user._id;
+    const { messageIds } = req.body ?? {};
+    if (!Array.isArray(messageIds) || messageIds.some((id) => !mongoose.isValidObjectId(id))) {
+      return res.status(400).json({ success: false, message: "Invalid message ids" });
+    }
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: "Conversation not found" });
+    }
+    if (!conversation.participants.some((participant) => String(participant) === String(userId))) {
+      return res.status(403).json({ success: false, message: "Unauthorized" });
+    }
+
+    const unread = await Message.find({
+      _id: { $in: messageIds },
+      conversationId,
+      sender: { $ne: userId },
+      isRead: false,
+    }).select("_id").lean();
+    const readIds = unread.map((message) => message._id);
+    if (readIds.length) {
+      const readAt = new Date();
+      await Message.updateMany(
+        { _id: { $in: readIds }, isRead: false },
+        { $set: { isRead: true, readAt }, $addToSet: { readBy: userId } },
+      );
+      emitToConversationUsers(req.app.get("io"), conversation, "messages-read", {
+        conversationId: String(conversationId),
+        readerId: String(userId),
+        messageIds: readIds.map(String),
+        readAt,
+      });
+    }
+    return res.json({ success: true });
   } catch (error) {
     next(error);
   }
@@ -387,7 +420,7 @@ export const createMessage = async (req, res, next) => {
     const io = req.app.get("io");
 
     if (io) {
-      io.to(conversationId).emit("new-message", normalized);
+      emitToConversationUsers(io, conversation, "new-message", normalized);
     }
 
     const usersInConversation = await getConversationRoomUserIds(

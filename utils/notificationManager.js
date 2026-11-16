@@ -5,6 +5,12 @@ import {
 import Notification from "../models/notificationSchema.js";
 import { enqueueNotification } from "../service/notification/notificationQueue.js";
 
+let notificationSocket;
+
+export function setNotificationSocket(io) {
+  notificationSocket = io;
+}
+
 const createNotification = async (userId, metadata) => {
   try {
     const notification = await Notification.create({
@@ -17,12 +23,33 @@ const createNotification = async (userId, metadata) => {
       link: metadata.link || null,
     });
 
+    if (notificationSocket) {
+      notificationSocket.to(`user:${String(userId)}`).emit("notification-created", {
+        _id: String(notification._id),
+        title: notification.title,
+        message: notification.message,
+        type: notification.type,
+        action: notification.action,
+        data: notification.data,
+        link: notification.link,
+        isRead: notification.isRead,
+        createdAt: notification.createdAt,
+      });
+    }
+
     try {
       await enqueueNotification(notification._id);
-    } catch {}
+    } catch (error) {
+      console.error("[notifications] Could not enqueue push notification", {
+        code: error.code || "QUEUE_ERROR",
+      });
+    }
 
     return notification;
   } catch (error) {
+    console.error("[notifications] Could not create notification", {
+      code: error.code || "DATABASE_ERROR",
+    });
     return null;
   }
 };

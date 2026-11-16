@@ -12,6 +12,7 @@ import {
   CONVERSATION_STATUS,
 } from "../config/constants.js";
 import { NotificationManager } from "../utils/notificationManager.js";
+import { emitToConversationUsers } from "../utils/chatUtils.js";
 import {
   parseSearchTerm,
   buildSearchRegex,
@@ -221,6 +222,7 @@ export const startResponseConversation = async (req, res, next) => {
       });
     }
 
+    let conversationCreated = false;
     let conversation = await Conversation.findOne({
       responseId: response._id,
     }).session(session);
@@ -261,6 +263,7 @@ export const startResponseConversation = async (req, res, next) => {
           { session },
         )
       )[0];
+      conversationCreated = true;
 
       for (const [participantId, metricType] of [
         [post.author, METRIC_TYPES.HUNTER],
@@ -296,6 +299,12 @@ export const startResponseConversation = async (req, res, next) => {
 
     await session.commitTransaction();
     session.endSession();
+
+    if (conversationCreated) {
+      emitToConversationUsers(req.app.get("io"), conversation, "conversation-updated", {
+        conversationId: String(conversation._id),
+      });
+    }
 
     await conversation.populate([
       {
@@ -491,6 +500,10 @@ export const acceptResponse = async (req, res, next) => {
 
     await session.commitTransaction();
     session.endSession();
+
+    emitToConversationUsers(req.app.get("io"), conversation, "conversation-updated", {
+      conversationId: String(conversation._id),
+    });
 
     await conversation.populate([
       {

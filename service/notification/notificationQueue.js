@@ -1,5 +1,7 @@
 import { Queue } from "bullmq";
-import redisConnection from "../../config/redis.js";
+import { createRedisConnection } from "../../config/redis.js";
+
+const redisConnection = createRedisConnection();
 
 export const notificationQueue = redisConnection
   ? new Queue("notification-queue", {
@@ -26,24 +28,25 @@ export const notificationQueue = redisConnection
     })
   : null;
 
-notificationQueue?.on("error", () => {});
+notificationQueue?.on("error", (error) => {
+  console.error("[notifications] Queue error", { code: error.code || "UNKNOWN" });
+});
 
 export const enqueueNotification = async (notificationId) => {
-  if (!notificationQueue) return null;
-
-  try {
-    const job = await notificationQueue.add(
-      "send-push",
-      {
-        notificationId: notificationId.toString(),
-      },
-      {
-        jobId: notificationId.toString(),
-      },
-    );
-
-    return job;
-  } catch (error) {
+  if (!notificationQueue) {
+    const error = new Error("REDIS_URL is not configured");
+    error.code = "REDIS_NOT_CONFIGURED";
     throw error;
   }
+  if (redisConnection.status !== "ready") {
+    const error = new Error("Redis is not ready");
+    error.code = "REDIS_UNAVAILABLE";
+    throw error;
+  }
+
+  return notificationQueue.add(
+    "send-push",
+    { notificationId: notificationId.toString() },
+    { jobId: notificationId.toString() },
+  );
 };

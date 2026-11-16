@@ -23,6 +23,7 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import metaRoute from "./routes/metaRoute.js";
 import serializeIds from "./middlewares/serializeIds.js";
 import { startPostExpiryScheduler } from "./service/notification/postExpiryScheduler.js";
+import { setNotificationSocket } from "./utils/notificationManager.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -51,6 +52,7 @@ export const io = new Server(server, {
   },
 });
 initializeSocket(io);
+setNotificationSocket(io);
 app.set("io", io);
 
 // Connection With Database`

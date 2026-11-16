@@ -8,6 +8,7 @@ export default function initializeSocket(io) {
   io.on("connection", async (socket) => {
     const userId = socket.user._id;
     const dbUserFilter = { _id: userId };
+    socket.join(`user:${userId}`);
 
     try {
       await User.findOneAndUpdate(dbUserFilter, {
@@ -23,6 +24,8 @@ export default function initializeSocket(io) {
       const lastSeen = new Date();
 
       try {
+        const remainingSockets = await io.in(`user:${userId}`).fetchSockets();
+        if (remainingSockets.length) return;
         await User.findOneAndUpdate(dbUserFilter, {
           isOnline: false,
           lastSeen,

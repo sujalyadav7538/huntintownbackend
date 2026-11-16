@@ -1,12 +1,17 @@
 import IORedis from "ioredis";
 
-const redisConnection = process.env.REDIS_URL
-  ? new IORedis(process.env.REDIS_URL, {
-      maxRetriesPerRequest: null,
-      retryStrategy: (attempt) => Math.min(attempt * 200, 6000),
-    })
-  : null;
+export function createRedisConnection({ worker = false } = {}) {
+  if (!process.env.REDIS_URL) return null;
 
-redisConnection?.on("error", () => {});
-
-export default redisConnection;
+  const connection = new IORedis(process.env.REDIS_URL, {
+    maxRetriesPerRequest: worker ? null : 1,
+    enableOfflineQueue: worker,
+    retryStrategy: (attempt) => Math.min(attempt * 200, 6000),
+  });
+  connection.on("error", (error) => {
+    console.error("[notifications] Redis connection error", {
+      code: error.code || "UNKNOWN",
+    });
+  });
+  return connection;
+}

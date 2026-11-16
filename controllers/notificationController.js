@@ -244,6 +244,12 @@ export const unsubscribeFromPush = async (req, res, next) => {
 };
 
 export const getVapidPublicKey = (req, res) => {
+  if (!process.env.VAPID_PUBLIC_KEY) {
+    return res.status(503).json({
+      success: false,
+      message: "Push notifications are not configured",
+    });
+  }
   return res.status(200).json({
     success: true,
     publicKey: process.env.VAPID_PUBLIC_KEY,

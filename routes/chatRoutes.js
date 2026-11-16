@@ -8,6 +8,8 @@ import {
   getMyChats,
   uploadAttachment,
   createMessage,
+  getUnreadMessageCount,
+  markConversationRead,
 } from "../controllers/chatController.js";
 import { uploadChatAttachment } from "../middlewares/uploadMiddleware.js";
 
@@ -17,7 +19,9 @@ const router = express.Router();
 router.get("/posts", verifyToken, getPostsWithConversations);
 router.get("/posts/:postId/conversations", verifyToken, getConversationsByPost);
 router.get("/my-chats", verifyToken, getMyChats);
+router.get("/unread-count", verifyToken, getUnreadMessageCount);
 router.get("/:conversationId/messages", verifyToken, getConversationMessages);
+router.patch("/:conversationId/read", verifyToken, markConversationRead);
 
 router.post(
   "/upload",

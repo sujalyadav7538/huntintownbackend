@@ -4,18 +4,21 @@ import {
   persistChatMessage,
   populateAndNormalize,
   getConversationRoomUserIds,
+  emitToConversationUsers,
 } from "../utils/chatUtils.js";
 import { updateUserMetrics } from "../service/userMetricService.js";
 import { ACTIONS, METRIC_TYPES } from "../config/constants.js";
 import { NotificationManager } from "../utils/notificationManager.js";
 
 export function registerChatSocket(io, socket) {
+  let joinSequence = 0;
   socket.on("join-conversation", async (conversationId, callback) => {
+    const request = ++joinSequence;
     try {
-      if (!conversationId) {
+      if (!mongoose.isValidObjectId(conversationId)) {
         return callback?.({
           success: false,
-          message: "Conversation id is required",
+          message: "Invalid conversation id",
         });
       }
 
@@ -41,6 +44,9 @@ export function registerChatSocket(io, socket) {
         });
       }
 
+      if (request !== joinSequence) {
+        return callback?.({ success: false, message: "Conversation is no longer active" });
+      }
       socket.join(conversationId);
 
       callback?.({
@@ -49,6 +55,13 @@ export function registerChatSocket(io, socket) {
       });
     } catch {
       callback?.({ success: false, message: "Internal server error" });
+    }
+  });
+
+  socket.on("leave-conversation", (conversationId) => {
+    if (mongoose.isValidObjectId(conversationId)) {
+      joinSequence++;
+      socket.leave(String(conversationId));
     }
   });
 
@@ -126,7 +139,7 @@ export function registerChatSocket(io, socket) {
 
       const normalized = await populateAndNormalize(message._id);
 
-      io.to(conversationId).emit("new-message", normalized);
+      emitToConversationUsers(io, conversation, "new-message", normalized);
 
       const usersInConversation = await getConversationRoomUserIds(
         io,

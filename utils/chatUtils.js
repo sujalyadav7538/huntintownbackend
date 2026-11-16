@@ -1,5 +1,29 @@
 import Message from "../models/messageSchema.js";
 import Conversation from "../models/conversationSchema.js";
+import mongoose from "mongoose";
+
+export function emitToConversationUsers(io, conversation, event, payload) {
+  if (!io) return;
+  const rooms = conversation.participants.map((participant) =>
+    `user:${String(participant._id ?? participant)}`,
+  );
+  io.to(rooms).emit(event, payload);
+}
+
+export async function getUnreadCounts(conversationIds, userId) {
+  if (!conversationIds.length) return new Map();
+  const counts = await Message.aggregate([
+    {
+      $match: {
+        conversationId: { $in: conversationIds },
+        sender: { $ne: new mongoose.Types.ObjectId(userId) },
+        isRead: false,
+      },
+    },
+    { $group: { _id: "$conversationId", count: { $sum: 1 } } },
+  ]);
+  return new Map(counts.map((entry) => [String(entry._id), entry.count]));
+}
 
 /**
  * Derive the messageType from a MIME type string.
