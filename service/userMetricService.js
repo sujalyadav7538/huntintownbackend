@@ -189,14 +189,14 @@ export const updateTrustScore = async (userId, session = null) => {
 
   // ---------------- Helper ----------------
   const helperScore =
-    metric.helperMetrics.acceptanceScore * 0.4 +
+    (metric.helperMetrics.contactScore ?? 0) * 0.4 +
     metric.helperMetrics.completionScore * 0.6;
 
   metric.helperMetrics.score = Number(helperScore.toFixed(2));
 
   // ---------------- Hunter ----------------
   const hunterScore =
-    metric.hunterMetrics.acceptanceScore * 0.4 +
+    (metric.hunterMetrics.contactScore ?? 0) * 0.4 +
     metric.hunterMetrics.completionScore * 0.6;
 
   metric.hunterMetrics.score = Number(hunterScore.toFixed(2));
@@ -267,6 +267,11 @@ export const updateHelperMetric = async (userId, action, session = null) => {
       metric.helperMetrics.responsesAccepted++;
       break;
 
+    case ACTIONS.RESPONSE_CONTACTED:
+      metric.helperMetrics.responsesContacted =
+        (metric.helperMetrics.responsesContacted ?? 0) + 1;
+      break;
+
     case ACTIONS.RESPONSE_COMPLETED:
       metric.helperMetrics.completedResponses++;
       break;
@@ -279,7 +284,19 @@ export const updateHelperMetric = async (userId, action, session = null) => {
       throw new Error("Invalid Helper Action");
   }
 
-  // Acceptance Score
+  // Contact Score
+  metric.helperMetrics.contactScore =
+    metric.helperMetrics.responsesSubmitted === 0
+      ? 0
+      : Number(
+          (
+            (metric.helperMetrics.responsesContacted /
+              metric.helperMetrics.responsesSubmitted) *
+            100
+          ).toFixed(2),
+        );
+
+  // Historical Acceptance Score
   metric.helperMetrics.acceptanceScore =
     metric.helperMetrics.responsesSubmitted === 0
       ? 0
@@ -329,6 +346,11 @@ export const updateHunterMetric = async (userId, action, session = null) => {
       metric.hunterMetrics.responsesAccepted++;
       break;
 
+    case ACTIONS.RESPONSE_CONTACTED:
+      metric.hunterMetrics.responsesContacted =
+        (metric.hunterMetrics.responsesContacted ?? 0) + 1;
+      break;
+
     case ACTIONS.POST_COMPLETED:
       metric.hunterMetrics.postsCompleted++;
       break;
@@ -341,7 +363,19 @@ export const updateHunterMetric = async (userId, action, session = null) => {
       throw new Error("Invalid Hunter Action");
   }
 
-  // Acceptance Score
+  // Contact Score
+  metric.hunterMetrics.contactScore =
+    metric.hunterMetrics.responsesReceived === 0
+      ? 0
+      : Number(
+          (
+            (metric.hunterMetrics.responsesContacted /
+              metric.hunterMetrics.responsesReceived) *
+            100
+          ).toFixed(2),
+        );
+
+  // Historical Acceptance Score
   metric.hunterMetrics.acceptanceScore =
     metric.hunterMetrics.responsesReceived === 0
       ? 0
@@ -441,10 +475,13 @@ export const updateResponseMetric = async (conversation, message) => {
   let metricUpdate = null;
 
   if (!tracking.firstMessageAt) {
-    // First message after offer acceptance
+    // Measure the first message from conversation start; acceptedAt supports older conversations.
     const responseTime = Math.max(
       0,
-      Math.ceil((message.createdAt - tracking.acceptedAt) / (1000 * 60)),
+      Math.ceil(
+        (message.createdAt - (tracking.startedAt ?? tracking.acceptedAt)) /
+          (1000 * 60),
+      ),
     );
 
     if (

@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
+import Conversation from "../models/conversationSchema.js";
 import Rating from "../models/ratingSchema.js";
 import Post from "../models/postSchema.js";
-import Response from "../models/responseSchema.js";
 import User from "../models/userSchema.js";
 import { NotificationManager } from "../utils/notificationManager.js";
 import { updateUserMetrics } from "../service/userMetricService.js";
@@ -9,13 +9,12 @@ import {
   METRIC_TYPES,
   ACTIONS,
   POST_STATUS,
-  RESPONSE_STATUS,
 } from "../config/constants.js";
 
 const isValidRating = (value) =>
   Number.isInteger(value) && value >= 1 && value <= 5;
 
-/** GET /api/rating/post/:postId/helpers — owner lists accepted helpers with their rating state */
+/** GET /api/rating/post/:postId/helpers — owner lists contacted helpers and rating state */
 export const getPostHelpers = async (req, res, next) => {
   try {
     const { postId } = req.params;
@@ -33,9 +32,9 @@ export const getPostHelpers = async (req, res, next) => {
       return res.status(403).json({ success: false, message: "Unauthorized" });
     }
 
-    const [responses, ratings] = await Promise.all([
-      Response.find({ postId, status: RESPONSE_STATUS.ACCEPTED })
-        .populate("respondedBy", "_id name avatar role")
+    const [conversations, ratings] = await Promise.all([
+      Conversation.find({ post: postId, hunter: ownerId })
+        .populate("helper", "_id name avatar role")
         .lean(),
       Rating.find({ postId, hunter: ownerId, direction: "hunter_to_helper" })
         .select("helper rating comment")
@@ -44,9 +43,9 @@ export const getPostHelpers = async (req, res, next) => {
 
     const ratingByHelper = new Map(ratings.map((r) => [String(r.helper), r]));
 
-    const helpers = responses
-      .filter((response) => response.respondedBy)
-      .map(({ _id: responseId, respondedBy: helper }) => {
+    const helpers = conversations
+      .filter((conversation) => conversation.helper)
+      .map(({ responseId, helper }) => {
         const existing = ratingByHelper.get(String(helper._id));
         return {
           _id: helper._id,
@@ -70,7 +69,7 @@ export const getPostHelpers = async (req, res, next) => {
   }
 };
 
-/** POST /api/rating — post owner rates an accepted helper after completion */
+/** POST /api/rating — post owner rates a contacted helper after completion */
 export const rateUser = async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -122,19 +121,18 @@ export const rateUser = async (req, res, next) => {
       });
     }
 
-    // Check that the helper actually worked on this post (accepted response)
-    const acceptedResponse = await Response.findOne({
-      postId,
-      respondedBy: helper,
-      status: RESPONSE_STATUS.ACCEPTED,
+    const conversation = await Conversation.findOne({
+      post: postId,
+      hunter,
+      helper,
     }).session(session);
-    if (!acceptedResponse) {
+    if (!conversation) {
       await session.abortTransaction();
       session.endSession();
       return res.status(404).json({
         success: false,
         message:
-          "The person you are trying to rate has no accepted response on this post",
+          "The person you are trying to rate has no conversation on this post",
       });
     }
 
@@ -271,9 +269,13 @@ export const reviewOwner = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Post is not yet completed" });
     }
 
-    const acceptedResponse = await Response.findOne({ postId, respondedBy: helperId, status: RESPONSE_STATUS.ACCEPTED });
-    if (!acceptedResponse) {
-      return res.status(403).json({ success: false, message: "Your response was not accepted for this post" });
+    const conversation = await Conversation.findOne({
+      post: postId,
+      hunter: post.author,
+      helper: helperId,
+    });
+    if (!conversation) {
+      return res.status(403).json({ success: false, message: "You have not started a conversation for this post" });
     }
 
     const existing = await Rating.findOne({ postId, hunter: post.author, helper: helperId, direction: "helper_to_hunter" });

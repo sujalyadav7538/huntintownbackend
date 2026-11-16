@@ -64,6 +64,16 @@ const userMetricSchema = new mongoose.Schema(
         default: 0,
       },
 
+      responsesContacted: {
+        type: Number,
+        default: 0,
+      },
+
+      contactScore: {
+        type: Number,
+        default: 0,
+      },
+
       acceptanceScore: {
         type: Number,
         default: 0,
@@ -118,6 +128,16 @@ const userMetricSchema = new mongoose.Schema(
       },
 
       responsesAccepted: {
+        type: Number,
+        default: 0,
+      },
+
+      responsesContacted: {
+        type: Number,
+        default: 0,
+      },
+
+      contactScore: {
         type: Number,
         default: 0,
       },

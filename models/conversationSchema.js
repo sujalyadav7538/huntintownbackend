@@ -36,9 +36,10 @@ const conversationSchema = new mongoose.Schema(
       },
     ],
     responseTracking: {
+      startedAt: Date,
+      contactMetricsTrackedAt: Date,
       acceptedAt: {
         type: Date,
-        required: true,
       },
 
       firstMessageAt: Date,

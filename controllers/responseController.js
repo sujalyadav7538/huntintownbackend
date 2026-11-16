@@ -176,6 +176,173 @@ export const createResponse = async (req, res, next) => {
   }
 };
 
+export const startResponseConversation = async (req, res, next) => {
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    const { responseId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(responseId)) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: "Invalid response id",
+      });
+    }
+
+    const response = await Response.findById(responseId).session(session);
+    if (!response) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({
+        success: false,
+        message: "Response not found",
+      });
+    }
+
+    const post = await Post.findById(response.postId).session(session);
+    if (!post) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    if (post.author.toString() !== req.user._id.toString()) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    let conversation = await Conversation.findOne({
+      responseId: response._id,
+    }).session(session);
+
+    if (!conversation) {
+      if (
+        ![POST_STATUS.LIVE, POST_STATUS.IN_PROGRESS].includes(post.status) ||
+        (post.expiresAt && post.expiresAt < new Date())
+      ) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: "This post is no longer available for new conversations",
+        });
+      }
+
+      const startedAt = new Date();
+      conversation = (
+        await Conversation.create(
+          [
+            {
+              post: post._id,
+              responseId: response._id,
+              hunter: post.author,
+              helper: response.respondedBy,
+              participants: [post.author, response.respondedBy],
+              status: CONVERSATION_STATUS.ACTIVE,
+              responseTracking: {
+                startedAt,
+                contactMetricsTrackedAt: startedAt,
+                acceptedAt: startedAt,
+              },
+              lastMessage: null,
+              lastMessageAt: null,
+            },
+          ],
+          { session },
+        )
+      )[0];
+
+      for (const [participantId, metricType] of [
+        [post.author, METRIC_TYPES.HUNTER],
+        [response.respondedBy, METRIC_TYPES.HELPER],
+      ]) {
+        await updateUserMetrics(
+          participantId,
+          [
+            { type: METRIC_TYPES.ACTIVITY, action: ACTIONS.CONVERSATION_STARTED },
+            { type: metricType, action: ACTIONS.RESPONSE_CONTACTED },
+          ],
+          session,
+        );
+      }
+    } else if (!conversation.responseTracking?.contactMetricsTrackedAt) {
+      conversation.set(
+        "responseTracking.contactMetricsTrackedAt",
+        new Date(),
+      );
+      await conversation.save({ session });
+
+      for (const [participantId, metricType] of [
+        [post.author, METRIC_TYPES.HUNTER],
+        [response.respondedBy, METRIC_TYPES.HELPER],
+      ]) {
+        await updateUserMetrics(
+          participantId,
+          [{ type: metricType, action: ACTIONS.RESPONSE_CONTACTED }],
+          session,
+        );
+      }
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    await conversation.populate([
+      {
+        path: "participants",
+        select: "_id name avatar rating location",
+      },
+      {
+        path: "post",
+        select: "_id title category",
+      },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      conversation,
+    });
+  } catch (error) {
+    if (session.inTransaction()) await session.abortTransaction();
+    session.endSession();
+
+    if (error?.code === 11000) {
+      try {
+        const conversation = await Conversation.findOne({
+          responseId: req.params.responseId,
+        }).populate([
+          {
+            path: "participants",
+            select: "_id name avatar rating location",
+          },
+          {
+            path: "post",
+            select: "_id title category",
+          },
+        ]);
+
+        if (conversation) {
+          return res.status(200).json({ success: true, conversation });
+        }
+      } catch (lookupError) {
+        return next(lookupError);
+      }
+    }
+
+    next(error);
+  }
+};
+
 export const acceptResponse = async (req, res, next) => {
   const session = await mongoose.startSession();
 

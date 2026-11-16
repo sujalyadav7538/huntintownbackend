@@ -81,6 +81,7 @@ export const ACTIONS = {
   // Response lifecycle
   RESPONSE_SUBMITTED: "response_submitted",
   RESPONSE_ACCEPTED: "response_accepted",
+  RESPONSE_CONTACTED: "response_contacted",
   RESPONSE_COMPLETED: "response_completed",
   RESPONSE_CANCELLED: "response_cancelled",
   RESPONSE_RECEIVED: "response_received", // hunter: a new response landed on their post
